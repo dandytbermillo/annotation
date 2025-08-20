@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide documents the complete implementation of all features from `docs/yjs-annotation-architecture-lates.md`. All advanced features have been fully implemented in the codebase.
+This guide documents the complete implementation of all features from `yjs-annotation-architecture-latest.md`. All advanced features have been fully implemented in the codebase.
 
 ## ✅ Implementation Status
 
