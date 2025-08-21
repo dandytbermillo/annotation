@@ -41,3 +41,13 @@
 - Persistence layer must adapt:
   - Web → Postgres via server API
   - Electron → Postgres or SQLite directly
+
+
+## PLATFORM REQUIREMENTS
+- Must run as Web app (Next.js)
+- Must run as local Electron app
+- Persistence layer must adapt:
+  - Web → Postgres via server API
+  - Electron → Postgres or SQLite directly
+- Local Postgres is already provided by `docker-compose.yml` in the repo root.  
+  Run with: `docker compose up -d postgres`
