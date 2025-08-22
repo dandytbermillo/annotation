@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test PostgreSQL Usage</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test PostgreSQL Usage</h1>
+    
+    <div class="status info">
+        <strong>Instructions:</strong>
+        <ol>
+            <li>Open http://localhost:3000 in your browser</li>
+            <li>Open Developer Console (F12)</li>
+            <li>Look for message: "Using PostgreSQL via API routes"</li>
+            <li>Create a note/annotation in the app</li>
+            <li>Click "Check Database" below to see if it was saved</li>
+        </ol>
+    </div>
+
+    <button onclick="checkDatabase()">Check Database</button>
+    <button onclick="testAPI()">Test API</button>
+    <button onclick="clearResults()">Clear</button>
+
+    <div id="results"></div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+
+        async function checkDatabase() {
+            const timestamp = new Date().toISOString();
+            resultsDiv.innerHTML += `<div class="status info">Checking database at ${timestamp}...</div>`;
+            
+            // Direct database check via our script
+            const response = await fetch('http://localhost:3000/api/persistence?method=getAllUpdates&docName=note:main');
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.updates && data.updates.length > 0) {
+                    resultsDiv.innerHTML += `
+                        <div class="status success">
+                            ✅ Found ${data.updates.length} updates for note:main in PostgreSQL!
+                            <p>Your notes ARE being saved to PostgreSQL.</p>
+                        </div>
+                    `;
+                } else {
+                    // Try other document patterns
+                    const patterns = ['annotation:', 'document:', 'note:', ''];
+                    let found = false;
+                    
+                    for (const pattern of patterns) {
+                        const resp = await fetch(`http://localhost:3000/api/persistence?method=getAllUpdates&docName=${pattern}`);
+                        if (resp.ok) {
+                            const d = await resp.json();
+                            if (d.updates && d.updates.length > 0) {
+                                resultsDiv.innerHTML += `
+                                    <div class="status success">
+                                        ✅ Found ${d.updates.length} updates for pattern "${pattern}" in PostgreSQL!
+                                    </div>
+                                `;
+                                found = true;
+                            }
+                        }
+                    }
+                    
+                    if (!found) {
+                        resultsDiv.innerHTML += `
+                            <div class="status error">
+                                ❌ No application data found in PostgreSQL.
+                                <p>Either:</p>
+                                <ul>
+                                    <li>The app is still using IndexedDB (check browser console)</li>
+                                    <li>You haven't created any notes yet</li>
+                                </ul>
+                            </div>
+                        `;
+                    }
+                }
+            } else {
+                resultsDiv.innerHTML += `
+                    <div class="status error">
+                        ❌ API Error: ${response.status}
+                    </div>
+                `;
+            }
+        }
+
+        async function testAPI() {
+            resultsDiv.innerHTML += `<div class="status info">Testing API...</div>`;
+            
+            try {
+                // Test save
+                const testData = new TextEncoder().encode('Test from HTML: ' + new Date().toISOString());
+                const saveResp = await fetch('http://localhost:3000/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method: 'persist',
+                        docName: 'html-test-' + Date.now(),
+                        update: Array.from(testData)
+                    })
+                });
+                
+                if (saveResp.ok) {
+                    resultsDiv.innerHTML += `
+                        <div class="status success">
+                            ✅ API is working! Data saved to PostgreSQL.
+                        </div>
+                    `;
+                } else {
+                    const error = await saveResp.json();
+                    resultsDiv.innerHTML += `
+                        <div class="status error">
+                            ❌ API Error: ${error.error}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML += `
+                    <div class="status error">
+                        ❌ Connection Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+        }
+
+        // Auto-check on load
+        window.onload = () => {
+            resultsDiv.innerHTML = '<div class="status info">Ready. Click "Check Database" after creating notes in the app.</div>';
+        };
+    </script>
+</body>
+</html>

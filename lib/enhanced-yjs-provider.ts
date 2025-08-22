@@ -1,12 +1,14 @@
 import * as Y from 'yjs'
+import { Awareness } from 'y-protocols/awareness'
 import { LRUCache } from 'lru-cache'
 import { HybridSyncManager } from './sync/hybrid-sync-manager'
 import { AnnotationMerger } from './annotation/annotation-merger'
 import { FractionalIndexManager } from './utils/fractional-indexing'
 import { PerformanceMonitor, DetailedMetrics } from './monitoring/performance-monitor'
-import { detectPlatform } from './utils/platform-detection'
+import { getPreferredPersistence } from './utils/platform-detection'
 import { EnhancedWebPersistenceAdapter } from './adapters/web-adapter-enhanced'
 import { ElectronPersistenceAdapter } from './adapters/electron-adapter'
+import { PostgresAPIAdapter } from './adapters/postgres-api-adapter'
 
 export interface PersistenceProvider {
   persist(docName: string, update: Uint8Array): Promise<void>
@@ -108,7 +110,7 @@ export class EnhancedCollaborativeStructure {
     
     if (!this.mainDoc.getMap('presence').size) {
       const presence = this.mainDoc.getMap('presence')
-      presence.set('awareness', new Y.Awareness(this.mainDoc))
+      presence.set('awareness', new Awareness(this.mainDoc))
       presence.set('cursors', new Y.Map())
       presence.set('selections', new Y.Map())
       presence.set('viewports', new Y.Map())
@@ -268,11 +270,32 @@ export class EnhancedCollaborationProvider {
   private constructor() {
     this.mainDoc = new Y.Doc()
     
-    // Platform-specific persistence
-    const platform = detectPlatform()
-    this.persistence = platform === 'web' 
-      ? new EnhancedWebPersistenceAdapter('annotation-system')
-      : new ElectronPersistenceAdapter('annotation-system')
+    // Select persistence adapter based on available features
+    const preferredPersistence = getPreferredPersistence()
+    
+    switch (preferredPersistence) {
+      case 'postgres':
+        // Use API adapter for PostgreSQL in the browser
+        if (typeof window !== 'undefined') {
+          console.log('Using PostgreSQL via API routes')
+          this.persistence = new PostgresAPIAdapter()
+        } else {
+          // Server-side would use direct adapter (not implemented in this context)
+          console.warn('Direct PostgreSQL adapter not available, using API adapter')
+          this.persistence = new PostgresAPIAdapter()
+        }
+        break
+      case 'sqlite':
+        // SQLite is handled by ElectronPersistenceAdapter
+        this.persistence = new ElectronPersistenceAdapter('annotation-system')
+        break
+      case 'indexeddb':
+      default:
+        this.persistence = new EnhancedWebPersistenceAdapter('annotation-system')
+        break
+    }
+    
+    console.log(`Using ${preferredPersistence} persistence adapter`)
     
     this.structure = new EnhancedCollaborativeStructure(this.mainDoc, this.persistence)
     this.syncManager = new HybridSyncManager(this.mainDoc, 'default-room')

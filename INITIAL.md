@@ -178,3 +178,21 @@ npm run test:e2e
 - Start with: `docker compose up -d postgres`
 - Default credentials: see `.env` or `docker-compose.yml`
 - Agents must **not** reimplement Postgres setup; only use the existing service.
+
+
+ ## ERRORS / TEST FAILURES (from attempt 1)
+ Build Error
+
+Module not found: Can't resolve 'fs'
+./node_modules/pg-connection-string/index.js (81:1)
+
+Module not found: Can't resolve 'fs'
+  79 |
+  80 |   // Only try to load fs if we expect to read from the disk
+> 81 |   const fs = config.sslcert || config.sslkey || config.sslrootcert ? require('fs') : null
+     | ^
+  82 |
+  83 |   if (config.sslcert) {
+  84 |     config.ssl.cert = fs.readFileSync(config.sslcert).toString()
+
+https://nextjs.org/docs/messages/module-not-found

@@ -1,0 +1,75 @@
+<\!DOCTYPE html>
+<html>
+<head>
+    <title>Check Browser Storage</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .storage-info { 
+            background: #f0f0f0; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px;
+        }
+        pre { background: #333; color: #fff; padding: 10px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>Browser Storage Check</h1>
+    
+    <div class="storage-info">
+        <h2>Instructions:</h2>
+        <ol>
+            <li>Open http://localhost:3000 in your browser</li>
+            <li>Create some annotations in the app</li>
+            <li>Open Developer Tools (F12)</li>
+            <li>Go to the Console tab</li>
+            <li>You should see: "Using indexeddb persistence adapter"</li>
+        </ol>
+    </div>
+
+    <div class="storage-info">
+        <h2>To Check IndexedDB Data:</h2>
+        <p>In Chrome DevTools:</p>
+        <ol>
+            <li>Go to Application tab</li>
+            <li>Look for IndexedDB in the left sidebar</li>
+            <li>Expand it to see databases</li>
+            <li>Look for "annotation-system" database</li>
+            <li>You'll see "updates" and "snapshots" stores with your data</li>
+        </ol>
+    </div>
+
+    <div class="storage-info">
+        <h2>Why PostgreSQL Isn't Being Used:</h2>
+        <ul>
+            <li>❌ Browser JavaScript cannot connect to PostgreSQL directly (security)</li>
+            <li>✅ The app correctly falls back to IndexedDB</li>
+            <li>✅ This is the expected behavior for a web application</li>
+        </ul>
+    </div>
+
+    <div class="storage-info">
+        <h2>To Actually Use PostgreSQL:</h2>
+        <p>You would need to create API routes. Example:</p>
+        <pre>
+// app/api/persistence/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { PostgresPersistenceAdapter } from '@/lib/adapters/postgres-adapter';
+
+const adapter = new PostgresPersistenceAdapter();
+
+export async function POST(req: NextRequest) {
+  const { docName, update } = await req.json();
+  await adapter.persist(docName, new Uint8Array(update));
+  return NextResponse.json({ success: true });
+}
+
+export async function GET(req: NextRequest) {
+  const docName = req.nextUrl.searchParams.get('docName');
+  const data = await adapter.load(docName);
+  return NextResponse.json({ data: Array.from(data || []) });
+}
+        </pre>
+    </div>
+</body>
+</html>

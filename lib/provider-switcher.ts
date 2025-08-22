@@ -3,6 +3,7 @@
 
 import { CollaborationProvider } from './yjs-provider'
 import { EnhancedCollaborationProvider } from './enhanced-yjs-provider'
+import { PostgresCollaborationProvider } from './yjs-provider-postgres'
 import './enhanced-yjs-provider-patch' // Apply the patch
 import { applyEnhancedProviderPatch } from './enhanced-yjs-provider-patch'
 
@@ -31,12 +32,15 @@ CollaborationProvider.prototype.getProvider = function() {
 // Unified interface that switches between providers
 export class UnifiedProvider {
   private static instance: UnifiedProvider
-  private provider: CollaborationProvider | EnhancedCollaborationProvider
+  private provider: CollaborationProvider | EnhancedCollaborationProvider | PostgresCollaborationProvider
   
   private constructor() {
     if (USE_ENHANCED_PROVIDER) {
       console.log('🚀 Using Enhanced YJS Provider with all advanced features')
       this.provider = EnhancedCollaborationProvider.getInstance()
+    } else if (process.env.NEXT_PUBLIC_POSTGRES_ENABLED === 'true') {
+      console.log('🐘 Using PostgreSQL-enabled YJS Provider')
+      this.provider = PostgresCollaborationProvider.getInstance()
     } else {
       console.log('Using standard YJS Provider (with getStates fix)')
       this.provider = CollaborationProvider.getInstance()
