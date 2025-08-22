@@ -195,4 +195,4 @@ For issues and support, please create an issue in the GitHub repository.
 
 ---
 
-**Built with ❤️ for collaborative annotation and knowledge management.** 
+ 
