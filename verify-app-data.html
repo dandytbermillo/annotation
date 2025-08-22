@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify Application Data in PostgreSQL</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .status-card {
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .success { 
+            background: #d4edda; 
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        .error { 
+            background: #f8d7da; 
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-color: #bee5eb;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            border-color: #ffeaa7;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .data-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+        .console {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+        }
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+        .log-info { color: #0066cc; }
+        .log-success { color: #28a745; }
+        .log-error { color: #dc3545; }
+        .log-warning { color: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Verify Application Data in PostgreSQL</h1>
+        
+        <div class="status-card info">
+            <h3>📋 Current Status:</h3>
+            <p>Your PostgreSQL has only 1 test entry in the database, not your actual application notes.</p>
+            <p><strong>Let's check if the app is properly configured to use PostgreSQL:</strong></p>
+        </div>
+
+        <h2>🔧 Configuration Check</h2>
+        <div>
+            <button onclick="checkConfiguration()">1. Check App Configuration</button>
+            <button onclick="checkAllDocuments()">2. Check All Documents</button>
+            <button onclick="checkAPIStatus()">3. Test API Connection</button>
+            <button onclick="createTestNote()">4. Create Test Note via API</button>
+        </div>
+
+        <div id="results"></div>
+
+        <h2>📊 Database Contents</h2>
+        <div id="db-contents"></div>
+
+        <h2>🖥️ Console Output</h2>
+        <div class="console" id="console-output"></div>
+
+        <h3>✅ Steps to Fix:</h3>
+        <div class="status-card warning">
+            <ol>
+                <li><strong>Verify .env.local exists</strong> with:
+                    <pre>POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/annotation_system</pre>
+                </li>
+                <li><strong>Check browser console</strong> at http://localhost:3000 for:
+                    <pre>"Using PostgreSQL via API routes"</pre>
+                </li>
+                <li><strong>Create a note in the app</strong>:
+                    <ul>
+                        <li>Open http://localhost:3000</li>
+                        <li>Create a new annotation</li>
+                        <li>Type some text</li>
+                        <li>Save or let it auto-save</li>
+                    </ul>
+                </li>
+                <li><strong>Run the database check</strong> again to see if data appears</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        const dbContentsDiv = document.getElementById('db-contents');
+        const consoleDiv = document.getElementById('console-output');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            consoleDiv.appendChild(entry);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+
+        async function checkConfiguration() {
+            log('Checking application configuration...', 'info');
+            
+            try {
+                // Check if API is responding
+                const response = await fetch('/api/persistence?method=load&docName=config-test');
+                
+                if (response.ok) {
+                    resultsDiv.innerHTML = `
+                        <div class="status-card success">
+                            <h3>✅ API is configured correctly!</h3>
+                            <p>The PostgreSQL API routes are working.</p>
+                        </div>
+                    `;
+                    log('API routes are configured and working', 'success');
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="status-card error">
+                            <h3>❌ API Error</h3>
+                            <p>Status: ${response.status}</p>
+                        </div>
+                    `;
+                    log(`API error: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="status-card error">
+                        <h3>❌ Cannot reach API</h3>
+                        <p>${error.message}</p>
+                        <p>Make sure the Next.js app is running on http://localhost:3000</p>
+                    </div>
+                `;
+                log(`Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkAllDocuments() {
+            log('Fetching all documents from PostgreSQL...', 'info');
+            
+            try {
+                // Query the database for all documents
+                const response = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method: 'custom',
+                        query: 'SELECT DISTINCT doc_name, COUNT(*) as updates, MAX(timestamp) as last_update FROM yjs_updates GROUP BY doc_name ORDER BY last_update DESC'
+                    })
+                });
+
+                if (!response.ok) {
+                    // Fallback to checking known document patterns
+                    const patterns = ['note:', 'annotation:', 'document:', 'main'];
+                    const results = [];
+                    
+                    for (const pattern of patterns) {
+                        const checkResponse = await fetch(`/api/persistence?method=getAllUpdates&docName=${pattern}`);
+                        if (checkResponse.ok) {
+                            const data = await checkResponse.json();
+                            if (data.updates && data.updates.length > 0) {
+                                results.push({
+                                    pattern,
+                                    count: data.updates.length
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (results.length > 0) {
+                        let html = '<div class="status-card info"><h3>📄 Found Documents:</h3><ul>';
+                        results.forEach(r => {
+                            html += `<li>Pattern "${r.pattern}": ${r.count} updates</li>`;
+                        });
+                        html += '</ul></div>';
+                        dbContentsDiv.innerHTML = html;
+                        log(`Found ${results.length} document patterns`, 'success');
+                    } else {
+                        dbContentsDiv.innerHTML = `
+                            <div class="status-card warning">
+                                <h3>⚠️ No application documents found</h3>
+                                <p>Only test data exists. You need to create notes in the app.</p>
+                            </div>
+                        `;
+                        log('No application documents found in database', 'warning');
+                    }
+                }
+            } catch (error) {
+                dbContentsDiv.innerHTML = `
+                    <div class="status-card error">
+                        <h3>❌ Error checking documents</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkAPIStatus() {
+            log('Testing PostgreSQL API status...', 'info');
+            
+            try {
+                const testUpdate = new TextEncoder().encode('API test: ' + new Date().toISOString());
+                
+                // Try to save data
+                const saveResponse = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method: 'persist',
+                        docName: 'api-test-' + Date.now(),
+                        update: Array.from(testUpdate)
+                    })
+                });
+
+                if (saveResponse.ok) {
+                    resultsDiv.innerHTML = `
+                        <div class="status-card success">
+                            <h3>✅ PostgreSQL API is working!</h3>
+                            <p>Successfully saved test data to PostgreSQL.</p>
+                            <p>The app should be able to save your notes.</p>
+                        </div>
+                    `;
+                    log('API test successful - data saved to PostgreSQL', 'success');
+                } else {
+                    const error = await saveResponse.json();
+                    resultsDiv.innerHTML = `
+                        <div class="status-card error">
+                            <h3>❌ API Save Failed</h3>
+                            <p>${error.error || 'Unknown error'}</p>
+                        </div>
+                    `;
+                    log(`API save failed: ${error.error}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="status-card error">
+                        <h3>❌ API Test Failed</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+                log(`API test error: ${error.message}`, 'error');
+            }
+        }
+
+        async function createTestNote() {
+            log('Creating test note through API...', 'info');
+            
+            try {
+                const docName = 'note:test-' + Date.now();
+                const content = {
+                    type: 'test',
+                    content: 'This is a test note created to verify PostgreSQL',
+                    timestamp: new Date().toISOString()
+                };
+                
+                const update = new TextEncoder().encode(JSON.stringify(content));
+                
+                const response = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method: 'persist',
+                        docName: docName,
+                        update: Array.from(update)
+                    })
+                });
+
+                if (response.ok) {
+                    // Now check if we can load it back
+                    const loadResponse = await fetch(`/api/persistence?method=load&docName=${docName}`);
+                    const loadData = await loadResponse.json();
+                    
+                    if (loadData.data) {
+                        resultsDiv.innerHTML = `
+                            <div class="status-card success">
+                                <h3>✅ Test Note Created Successfully!</h3>
+                                <p>Document: ${docName}</p>
+                                <p>Data was saved to and loaded from PostgreSQL.</p>
+                                <p><strong>Your app should be working correctly!</strong></p>
+                            </div>
+                        `;
+                        log(`Test note created: ${docName}`, 'success');
+                        
+                        // Refresh the document list
+                        setTimeout(checkAllDocuments, 1000);
+                    }
+                } else {
+                    const error = await response.json();
+                    resultsDiv.innerHTML = `
+                        <div class="status-card error">
+                            <h3>❌ Failed to create test note</h3>
+                            <p>${error.error}</p>
+                        </div>
+                    `;
+                    log(`Failed to create test note: ${error.error}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="status-card error">
+                        <h3>❌ Error creating test note</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Initial logs
+        log('PostgreSQL verification page loaded');
+        log('Click the buttons above to check your configuration');
+        log('Your current status: Only 1 test entry in database');
+    </script>
+</body>
+</html>

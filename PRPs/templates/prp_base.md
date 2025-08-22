@@ -1,4 +1,6 @@
 name: "Base PRP Template v2 - Context-Rich with Validation Loops"
+version: 1
+last_updated: 
 description: |
 
 ## Purpose

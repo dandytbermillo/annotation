@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PostgreSQL Status Check</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid #dee2e6;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐘 PostgreSQL Status Check</h1>
+        
+        <div class="status info">
+            <h3>Current Setup:</h3>
+            <ul>
+                <li>NEXT_PUBLIC_POSTGRES_ENABLED = true</li>
+                <li>NEXT_PUBLIC_USE_ENHANCED_PROVIDER = false (disabled due to errors)</li>
+                <li>Using PostgreSQL-enabled standard provider</li>
+            </ul>
+        </div>
+
+        <h2>Steps to Verify:</h2>
+        <ol>
+            <li>Open <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></li>
+            <li>Open Developer Console (F12)</li>
+            <li>Look for: <strong>"🐘 Using PostgreSQL-enabled YJS Provider"</strong></li>
+            <li>Create a note/annotation</li>
+            <li>Click "Check Database" below</li>
+        </ol>
+
+        <div id="results"></div>
+
+        <button onclick="checkDatabase()">Check Database</button>
+        <button onclick="testSave()">Test Save to PostgreSQL</button>
+        <button onclick="checkAPI()">Check API Status</button>
+        <button onclick="clearResults()">Clear</button>
+
+        <h3>Console Log:</h3>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        const logDiv = document.getElementById('log');
+
+        function log(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${time}] ${msg}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function checkDatabase() {
+            log('Checking database...');
+            try {
+                const response = await fetch('/api/persistence?method=getAllUpdates&docName=note:');
+                if (response.ok) {
+                    const data = await response.json();
+                    const count = data.updates ? data.updates.length : 0;
+                    resultsDiv.innerHTML = `
+                        <div class="status ${count > 0 ? 'success' : 'warning'}">
+                            Found ${count} updates in PostgreSQL for notes
+                        </div>
+                    `;
+                    log(`Database check: ${count} updates found`);
+                } else {
+                    resultsDiv.innerHTML = '<div class="status error">API Error</div>';
+                    log('Database check failed', 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testSave() {
+            log('Testing save to PostgreSQL...');
+            try {
+                const testData = {
+                    method: 'persist',
+                    docName: 'test-' + Date.now(),
+                    update: Array.from(new TextEncoder().encode('Test from status page'))
+                };
+                
+                const response = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testData)
+                });
+                
+                if (response.ok) {
+                    resultsDiv.innerHTML = '<div class="status success">✅ Save successful!</div>';
+                    log('Test save successful');
+                } else {
+                    const error = await response.json();
+                    resultsDiv.innerHTML = `<div class="status error">Save failed: ${error.error}</div>`;
+                    log(`Save failed: ${error.error}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkAPI() {
+            log('Checking API status...');
+            try {
+                const response = await fetch('/api/persistence?method=load&docName=test');
+                if (response.ok) {
+                    resultsDiv.innerHTML = '<div class="status success">✅ API is working!</div>';
+                    log('API check successful');
+                } else {
+                    resultsDiv.innerHTML = '<div class="status error">❌ API Error</div>';
+                    log('API check failed', 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">Error: ${error.message}</div>`;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+            logDiv.innerHTML = '';
+            log('Cleared');
+        }
+
+        // Initial check
+        window.onload = () => {
+            log('PostgreSQL status page loaded');
+            checkAPI();
+        };
+    </script>
+</body>
+</html>

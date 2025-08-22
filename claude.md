@@ -66,6 +66,9 @@ Agents must cite these files in PRPs and reference exact paths/line ranges when 
 ## PRP PROCESS (How agents must operate)
 1. **Read `INITIAL.md`** (the feature request) fully; if missing information, append clarification to `INITIAL.md` before generating PRP.
 2. **Run `/generate-prp <INITIAL.md>`** (or follow the `generate-prp` command) to output `PRPs/{feature}.md` using `PRPs/templates/prp_base.md`.
+   - **IMPORTANT**: If a PRP already exists for this feature (check PRPs/ directory), UPDATE the existing file instead of creating a new one
+   - Use consistent naming: for `initial.md` about postgres, use `PRPs/postgres-persistence.md`
+   - Add version tracking: increment `version: N` at the top of the PRP when updating
 3. **PRP content must include**:
    - Clear goal, acceptance criteria, data models, exact files to modify (with paths), ordered tasks, validation gates, and rollback steps.
    - External references and any required dev setup commands.

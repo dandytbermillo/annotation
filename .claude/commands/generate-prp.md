@@ -55,7 +55,18 @@ uv run pytest tests/ -v
 *** ULTRATHINK ABOUT THE PRP AND PLAN YOUR APPROACH THEN START WRITING THE PRP ***
 
 ## Output
-Save as: `PRPs/{feature-name}.md`
+1. First check if a PRP already exists for this feature:
+   - If initial.md is passed, look for PRPs/*postgres*.md or PRPs/*persistence*.md
+   - If a PRP exists with similar name, UPDATE that file instead of creating new
+   - Show a message: "Updating existing PRP: {filename}"
+
+2. If no existing PRP found:
+   - Save as: `PRPs/{feature-name}.md`
+   - Use consistent naming from the feature file name
+
+3. Version tracking:
+   - Add a version number or timestamp at the top of the PRP
+   - Example: `version: 2` or `last_updated: 2024-01-15`
 
 ## Quality Checklist
 - [ ] All necessary context included

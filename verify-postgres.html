@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PostgreSQL Verification</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status { 
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success { 
+            background: #d4edda; 
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error { 
+            background: #f8d7da; 
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid #dee2e6;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐘 PostgreSQL Verification</h1>
+        
+        <div class="status info" id="instructions">
+            <h3>Instructions:</h3>
+            <ol>
+                <li>Open <a href="http://localhost:3000" target="_blank">http://localhost:3000</a> in a new tab</li>
+                <li>Open Developer Tools (F12) in that tab</li>
+                <li>Look for console message: <strong>"Using PostgreSQL via API routes"</strong></li>
+                <li>Create some annotations in the app</li>
+                <li>Click the test buttons below to verify PostgreSQL is working</li>
+            </ol>
+        </div>
+
+        <h2>Test PostgreSQL API</h2>
+        
+        <div>
+            <button onclick="testConnection()">1. Test API Connection</button>
+            <button onclick="testPersist()">2. Save Test Data</button>
+            <button onclick="testLoad()">3. Load Test Data</button>
+            <button onclick="testRealData()">4. Check Real App Data</button>
+        </div>
+
+        <div id="results"></div>
+
+        <h2>Console Output</h2>
+        <div id="console-output" style="max-height: 300px; overflow-y: auto;"></div>
+    </div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        const consoleDiv = document.getElementById('console-output');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            consoleDiv.appendChild(entry);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+
+        async function testConnection() {
+            log('Testing PostgreSQL API connection...');
+            try {
+                const response = await fetch('/api/persistence?method=load&docName=connection-test');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultsDiv.innerHTML = '<div class="status success">✅ API Connection Successful! PostgreSQL is accessible.</div>';
+                    log('API responded successfully', 'success');
+                } else {
+                    resultsDiv.innerHTML = `<div class="status error">❌ API Error: ${data.error}</div>`;
+                    log(`API Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">❌ Connection Failed: ${error.message}</div>`;
+                log(`Connection failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testPersist() {
+            log('Saving test data to PostgreSQL...');
+            try {
+                // Create a simple test update
+                const testData = new TextEncoder().encode('PostgreSQL test data: ' + new Date().toISOString());
+                
+                const response = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        method: 'persist',
+                        docName: 'postgres-test-doc',
+                        update: Array.from(testData)
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultsDiv.innerHTML = '<div class="status success">✅ Data saved to PostgreSQL successfully!</div>';
+                    log('Data persisted successfully', 'success');
+                } else {
+                    resultsDiv.innerHTML = `<div class="status error">❌ Save failed: ${data.error}</div>`;
+                    log(`Save failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">❌ Save error: ${error.message}</div>`;
+                log(`Save error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLoad() {
+            log('Loading test data from PostgreSQL...');
+            try {
+                const response = await fetch('/api/persistence?method=load&docName=postgres-test-doc');
+                const data = await response.json();
+                
+                if (response.ok && data.data) {
+                    const text = new TextDecoder().decode(new Uint8Array(data.data));
+                    resultsDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Data loaded from PostgreSQL!
+                            <pre>${text}</pre>
+                        </div>
+                    `;
+                    log('Data loaded successfully', 'success');
+                } else if (response.ok && !data.data) {
+                    resultsDiv.innerHTML = '<div class="status info">No data found (save some first)</div>';
+                    log('No data found in database', 'info');
+                } else {
+                    resultsDiv.innerHTML = `<div class="status error">❌ Load failed: ${data.error}</div>`;
+                    log(`Load failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">❌ Load error: ${error.message}</div>`;
+                log(`Load error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testRealData() {
+            log('Checking for real app data...');
+            try {
+                // Try to load a document that the app might have created
+                const response = await fetch('/api/persistence?method=getAllUpdates&docName=note:main');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (data.updates && data.updates.length > 0) {
+                        resultsDiv.innerHTML = `
+                            <div class="status success">
+                                ✅ Found ${data.updates.length} updates in PostgreSQL!
+                                <p>This means the app is successfully using PostgreSQL for persistence.</p>
+                            </div>
+                        `;
+                        log(`Found ${data.updates.length} updates in database`, 'success');
+                    } else {
+                        resultsDiv.innerHTML = `
+                            <div class="status info">
+                                No app data found yet. 
+                                <p>Create some annotations in the main app first.</p>
+                            </div>
+                        `;
+                        log('No app data found yet', 'info');
+                    }
+                } else {
+                    resultsDiv.innerHTML = `<div class="status error">❌ Check failed: ${data.error}</div>`;
+                    log(`Check failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">❌ Check error: ${error.message}</div>`;
+                log(`Check error: ${error.message}`, 'error');
+            }
+        }
+
+        // Initial message
+        log('PostgreSQL verification page loaded');
+        log('Click the test buttons to verify PostgreSQL integration');
+    </script>
+</body>
+</html>

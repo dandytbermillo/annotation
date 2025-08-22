@@ -23,7 +23,7 @@ A modern, real-time collaborative annotation system built with Next.js, YJS, and
 - **Frontend**: Next.js 15, React 19, TypeScript
 - **Collaboration**: YJS, TipTap Editor
 - **Styling**: Tailwind CSS, Radix UI
-- **Storage**: LocalStorage, IndexedDB
+- **Storage**: PostgreSQL (primary), IndexedDB (fallback)
 - **State Management**: YJS CRDTs, React Context
 
 ## 📦 Installation
@@ -43,7 +43,31 @@ A modern, real-time collaborative annotation system built with Next.js, YJS, and
    yarn install
    ```
 
-3. **Run the development server**
+3. **PostgreSQL Setup (Optional)**
+   
+   The application can use PostgreSQL for persistent storage. By default, it uses IndexedDB.
+   
+   **Using Docker (Recommended):**
+   ```bash
+   # Start PostgreSQL
+   npm run db:up
+   
+   # Run migrations
+   npm run db:migrate
+   ```
+   
+   **Manual Setup:**
+   ```bash
+   # Install PostgreSQL locally
+   # Create a database named 'annotation_system'
+   # Update .env.local with your connection string:
+   POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/annotation_system
+   
+   # Run migrations
+   psql $POSTGRES_URL -f migrations/001_initial_schema.up.sql
+   ```
+
+4. **Run the development server**
    ```bash
    npm run dev
    # or
@@ -78,10 +102,10 @@ A modern, real-time collaborative annotation system built with Next.js, YJS, and
 ## 🏗️ Architecture
 
 ### Storage Layers
-1. **LocalStorage**: Basic metadata and user preferences
-2. **IndexedDB**: Binary document data and snapshots
-3. **YJS Documents**: Real-time collaborative state
-4. **Memory**: Runtime application state
+1. **PostgreSQL**: Primary persistence layer for production (when configured)
+2. **IndexedDB**: Fallback storage and offline support
+3. **YJS Documents**: Real-time collaborative state (in-memory)
+4. **LocalStorage**: User preferences and settings
 
 ### Collaboration Flow
 ```
