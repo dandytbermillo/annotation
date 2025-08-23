@@ -1,6 +1,6 @@
 import * as Y from 'yjs'
-import { Awareness } from 'y-protocols/awareness'
-import { LRUCache } from 'lru-cache'
+// import { Awareness } from 'y-protocols/awareness' // Not needed here
+// import { LRUCache } from 'lru-cache' // Temporarily disabled due to compatibility issues
 import { HybridSyncManager } from './sync/hybrid-sync-manager'
 import { AnnotationMerger } from './annotation/annotation-merger'
 import { FractionalIndexManager } from './utils/fractional-indexing'
@@ -74,16 +74,11 @@ export class EnhancedCollaborativeStructure {
     this.loadingQueue = new Map()
     
     // Initialize LRU cache for editor subdocs
-    this.editorCache = new LRUCache<string, Y.Doc>({
-      max: 50, // Keep 50 panels in memory
-      ttl: 1000 * 60 * 30, // 30 min TTL
-      dispose: (doc: Y.Doc, panelId: string) => {
-        this.unloadPanel(panelId, doc)
-      },
-      fetchMethod: async (panelId: string) => {
-        return await this.loadPanel(panelId)
-      }
-    })
+    // Using a simple Map for now to avoid LRUCache compatibility issues
+    this.editorCache = new Map() as any
+    
+    // TODO: Replace with proper LRUCache implementation when compatibility is resolved
+    // For now, using a simple Map that doesn't have TTL or max size limits
     
     this.initializeMainDocStructure()
   }
@@ -110,7 +105,8 @@ export class EnhancedCollaborativeStructure {
     
     if (!this.mainDoc.getMap('presence').size) {
       const presence = this.mainDoc.getMap('presence')
-      presence.set('awareness', new Awareness(this.mainDoc))
+      // Don't store Awareness in Y.Map - it should be handled separately
+      // presence.set('awareness', new Awareness(this.mainDoc)) // This causes "Unexpected content type"
       presence.set('cursors', new Y.Map())
       presence.set('selections', new Y.Map())
       presence.set('viewports', new Y.Map())
@@ -132,7 +128,15 @@ export class EnhancedCollaborativeStructure {
     }
 
     // Try to get from cache
-    const cached = await this.editorCache.fetch(panelId)
+    // Check if already cached
+    let cached = this.editorCache.get(panelId)
+    if (!cached) {
+      // Load the panel if not cached
+      cached = await this.loadPanel(panelId)
+      if (cached) {
+        this.editorCache.set(panelId, cached)
+      }
+    }
     if (cached) {
       this.updatePanelState(panelId, 'active')
       return cached

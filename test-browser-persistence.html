@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Persistence Mode</title>
+</head>
+<body>
+    <h1>Testing Persistence Mode</h1>
+    <div id="status">Loading...</div>
+    <div id="logs"></div>
+    
+    <script>
+        async function checkPersistence() {
+            const logs = document.getElementById('logs');
+            const status = document.getElementById('status');
+            
+            try {
+                // Check if using enhanced provider
+                const response = await fetch('http://localhost:3000');
+                const html = await response.text();
+                
+                // Check environment variables in the page
+                if (html.includes('NEXT_PUBLIC_USE_ENHANCED_PROVIDER')) {
+                    logs.innerHTML += '<p>Enhanced provider enabled in environment</p>';
+                }
+                
+                // Check health endpoint
+                const healthResponse = await fetch('http://localhost:3000/api/persistence/health');
+                const health = await healthResponse.json();
+                logs.innerHTML += `<p>Health check: ${JSON.stringify(health)}</p>`;
+                
+                // Try to persist some data
+                const persistResponse = await fetch('http://localhost:3000/api/persistence', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'persist',
+                        docName: 'test-doc',
+                        update: btoa('test update')
+                    })
+                });
+                
+                const persistResult = await persistResponse.json();
+                logs.innerHTML += `<p>Persist result: ${JSON.stringify(persistResult)}</p>`;
+                
+                status.textContent = health.healthy ? 'PostgreSQL Connected' : 'PostgreSQL Not Available - Using Fallback';
+                
+            } catch (error) {
+                logs.innerHTML += `<p>Error: ${error.message}</p>`;
+                status.textContent = 'Error checking persistence';
+            }
+        }
+        
+        checkPersistence();
+    </script>
+</body>
+</html>

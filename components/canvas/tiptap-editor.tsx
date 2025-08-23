@@ -9,7 +9,7 @@ import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import { useEffect, useImperativeHandle, forwardRef } from 'react'
 import * as Y from 'yjs'
-import { IndexeddbPersistence } from 'y-indexeddb'
+// import { IndexeddbPersistence } from 'y-indexeddb' // Removed to avoid conflicts with unified persistence
 import { WebsocketProvider } from 'y-websocket'
 import { Mark, mergeAttributes } from '@tiptap/core'
 import { AnnotationDecorations } from './annotation-decorations'
@@ -107,14 +107,11 @@ const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
     // Create or use existing YDoc for this editor
     const doc = ydoc || new Y.Doc()
     
-    // Set up persistence if no provider is given (for local-only editing)
+    // Persistence is now handled by the unified provider at a higher level
+    // to avoid conflicts between different persistence mechanisms
     useEffect(() => {
-      if (!provider && !ydoc && typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
-        const persistence = new IndexeddbPersistence(`annotation-${panelId}`, doc)
-        return () => {
-          persistence.destroy()
-        }
-      }
+      // Removed local IndexeddbPersistence to prevent conflicts
+      // The UnifiedProvider handles all persistence centrally
     }, [doc, panelId, provider, ydoc])
 
     const editor = useEditor({

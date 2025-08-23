@@ -4,6 +4,7 @@ import { useState, useRef } from "react"
 import dynamic from 'next/dynamic'
 import { NotesExplorer } from "./notes-explorer"
 import { Menu } from "lucide-react"
+import { ErrorBoundary } from "./error-boundary"
 
 const ModernAnnotationCanvas = dynamic(
   () => import('./annotation-canvas-modern'),
@@ -103,13 +104,15 @@ export function AnnotationApp() {
         isNotesExplorerOpen ? 'lg:ml-80' : 'ml-0'
       }`}>
         {selectedNoteId ? (
-          <ModernAnnotationCanvas 
-            key={selectedNoteId} 
-            noteId={selectedNoteId}
-            ref={canvasRef}
-            isNotesExplorerOpen={isNotesExplorerOpen}
-            onCanvasStateChange={setCanvasState}
-          />
+          <ErrorBoundary>
+            <ModernAnnotationCanvas 
+              key={selectedNoteId} 
+              noteId={selectedNoteId}
+              ref={canvasRef}
+              isNotesExplorerOpen={isNotesExplorerOpen}
+              onCanvasStateChange={setCanvasState}
+            />
+          </ErrorBoundary>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gray-950">
             <div className="text-center">

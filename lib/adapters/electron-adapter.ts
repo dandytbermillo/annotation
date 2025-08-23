@@ -1,5 +1,21 @@
 import * as Y from 'yjs'
 import { PersistenceProvider } from '../enhanced-yjs-provider'
+import { getElectronDatabaseConfig, isElectron, getElectronDbType } from '../utils/electron-config'
+
+// Dynamic imports for Electron-specific modules
+let Pool: any
+let pgLoaded = false
+
+// Try to load pg module if available (only in Node/Electron context)
+if (typeof window === 'undefined' && isElectron()) {
+  try {
+    const pg = require('pg')
+    Pool = pg.Pool
+    pgLoaded = true
+  } catch (e) {
+    console.warn('PostgreSQL driver not available in Electron, falling back to SQLite')
+  }
+}
 
 // Mock implementation for browser compatibility
 // In a real Electron app, you would import actual better-sqlite3
@@ -17,33 +33,66 @@ interface Statement {
 
 export class ElectronPersistenceAdapter implements PersistenceProvider {
   private db: Database | null = null
+  private pool: any = null // PostgreSQL pool
   private dbPath: string
+  private dbType: 'postgres' | 'sqlite' = 'sqlite'
   
   constructor(dbName: string) {
     this.dbPath = dbName
     this.initDatabase()
   }
   
-  private initDatabase(): void {
-    // In Electron, this would use better-sqlite3
-    // For now, we'll use localStorage as a fallback
+  private async initDatabase(): Promise<void> {
+    // Check if we're in Electron and should use PostgreSQL
+    if (isElectron() && getElectronDbType() === 'postgres' && pgLoaded) {
+      try {
+        const config = await getElectronDatabaseConfig()
+        this.pool = new Pool({
+          host: config.host,
+          port: config.port,
+          database: config.database,
+          user: config.user,
+          password: config.password,
+          ssl: config.ssl,
+          max: 20,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 2000,
+        })
+        
+        this.dbType = 'postgres'
+        console.log('ElectronPersistenceAdapter: Using PostgreSQL')
+        
+        // Test connection
+        await this.pool.query('SELECT 1')
+        return
+      } catch (error) {
+        console.error('Failed to connect to PostgreSQL, falling back to SQLite:', error)
+      }
+    }
+    
+    // Fallback to SQLite/localStorage
     if (typeof window !== 'undefined' && !(window as any).electronAPI) {
       console.warn('ElectronPersistenceAdapter: Running in browser mode, using localStorage')
       return
     }
     
-    // Mock database initialization
+    // Mock database initialization for SQLite
     this.db = {
       prepare: (sql: string) => ({
         run: (...params: any[]) => {
           // Store in localStorage for mock
           const key = `electron-db-${params[0]}`
-          localStorage.setItem(key, JSON.stringify(params))
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key, JSON.stringify(params))
+          }
         },
         get: (...params: any[]) => {
           const key = `electron-db-${params[0]}`
-          const data = localStorage.getItem(key)
-          return data ? JSON.parse(data) : null
+          if (typeof localStorage !== 'undefined') {
+            const data = localStorage.getItem(key)
+            return data ? JSON.parse(data) : null
+          }
+          return null
         },
         all: (...params: any[]) => {
           // Return all items matching pattern
@@ -94,10 +143,28 @@ export class ElectronPersistenceAdapter implements PersistenceProvider {
   }
   
   async persist(docName: string, update: Uint8Array): Promise<void> {
+    // Use PostgreSQL if available
+    if (this.dbType === 'postgres' && this.pool) {
+      try {
+        await this.pool.query(
+          `INSERT INTO yjs_updates (doc_name, update, client_id, timestamp)
+           VALUES ($1, $2, $3, NOW())`,
+          [docName, Buffer.from(update), 'electron-adapter']
+        )
+        return
+      } catch (error) {
+        console.error('PostgreSQL persist failed:', error)
+        // Fall through to SQLite
+      }
+    }
+    
+    // SQLite/localStorage fallback
     if (!this.db) {
       // Fallback to localStorage
       const key = `yjs-update-${docName}-${Date.now()}`
-      localStorage.setItem(key, JSON.stringify(Array.from(update)))
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(Array.from(update)))
+      }
       return
     }
     
@@ -110,6 +177,45 @@ export class ElectronPersistenceAdapter implements PersistenceProvider {
   }
   
   async load(docName: string): Promise<Uint8Array | null> {
+    // Use PostgreSQL if available
+    if (this.dbType === 'postgres' && this.pool) {
+      try {
+        // Try snapshot first
+        const snapshotResult = await this.pool.query(
+          `SELECT state FROM snapshots 
+           WHERE doc_name = $1 
+           ORDER BY created_at DESC 
+           LIMIT 1`,
+          [docName]
+        )
+        
+        if (snapshotResult.rows.length > 0) {
+          return new Uint8Array(snapshotResult.rows[0].state)
+        }
+        
+        // Load and merge all updates
+        const updatesResult = await this.pool.query(
+          `SELECT update FROM yjs_updates 
+           WHERE doc_name = $1 
+           ORDER BY timestamp ASC`,
+          [docName]
+        )
+        
+        if (updatesResult.rows.length === 0) return null
+        
+        // Merge updates
+        const updates = updatesResult.rows.map(row => new Uint8Array(row.update))
+        const doc = new Y.Doc()
+        updates.forEach(update => Y.applyUpdate(doc, update))
+        
+        return Y.encodeStateAsUpdate(doc)
+      } catch (error) {
+        console.error('PostgreSQL load failed:', error)
+        // Fall through to SQLite
+      }
+    }
+    
+    // SQLite/localStorage fallback
     // Try snapshot first
     const snapshot = await this.loadSnapshot(docName)
     if (snapshot) return snapshot
@@ -225,6 +331,12 @@ export class ElectronPersistenceAdapter implements PersistenceProvider {
   
   close(): void {
     if (this.db) {
+      this.db.close()
+    }
+  }
+  
+  async destroy(): Promise<void> {
+    if (this.db && typeof this.db.close === 'function') {
       this.db.close()
     }
   }

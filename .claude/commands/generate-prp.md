@@ -74,7 +74,9 @@ uv run pytest tests/ -v
 - [ ] References existing patterns
 - [ ] Clear implementation path
 - [ ] Error handling documented
+- [ ] PRP tasks and scope match exactly with the source initial feature file
 
 Score the PRP on a scale of 1-10 (confidence level to succeed in one-pass implementation using claude codes)
 
 Remember: The goal is one-pass implementation success through comprehensive context.
+

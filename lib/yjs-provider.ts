@@ -1,4 +1,5 @@
 import * as Y from 'yjs'
+import { checkAndMigrateLegacyData } from './sync/sync-to-tables'
 
 // Mock IndexedDB persistence for browser compatibility
 // In a real implementation, you would use: import { IndexeddbPersistence } from 'y-indexeddb'
@@ -21,20 +22,31 @@ class MockIndexeddbPersistence implements PersistenceProvider {
   }
 
   private async setupPersistence() {
-    // Load existing state from localStorage as Y.js update
-    const savedState = localStorage.getItem(`yjs-doc-${this.docName}`)
-    if (savedState) {
-      try {
-        // Parse the saved state and apply to document
-        const updates = JSON.parse(savedState)
-        if (updates.documentState) {
-          // Apply saved updates to the document
-          const uint8Array = new Uint8Array(Object.values(updates.documentState))
-          Y.applyUpdate(this.doc, uint8Array)
+    try {
+      // First check if we need to migrate legacy data
+      const migrated = checkAndMigrateLegacyData(this.docName, this.doc)
+      
+      if (!migrated) {
+        // Load existing state from localStorage as Y.js update
+        const savedState = localStorage.getItem(`yjs-doc-${this.docName}`)
+        if (savedState) {
+          try {
+            // Parse the saved state and apply to document
+            const updates = JSON.parse(savedState)
+            if (updates.documentState && Array.isArray(updates.documentState)) {
+              // Apply saved updates to the document
+              const uint8Array = new Uint8Array(updates.documentState)
+              Y.applyUpdate(this.doc, uint8Array)
+            }
+          } catch (error) {
+            console.warn('Failed to restore YJS state from localStorage:', error)
+            // Clear corrupted state
+            localStorage.removeItem(`yjs-doc-${this.docName}`)
+          }
         }
-      } catch (error) {
-        console.warn('Failed to restore YJS state from localStorage:', error)
       }
+    } catch (error) {
+      console.error('Error in setupPersistence:', error)
     }
 
     // Listen for document changes and persist them

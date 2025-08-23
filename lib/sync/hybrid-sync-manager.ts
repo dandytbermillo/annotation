@@ -79,15 +79,8 @@ export class HybridSyncManager {
   private async createWebRTCProvider(): Promise<any> {
     if (typeof window !== 'undefined') {
       try {
-        const { WebrtcProvider } = await import('y-webrtc')
-        return new WebrtcProvider(this.roomId, this.doc, {
-          signaling: ['wss://signaling.example.com'],
-          password: null,
-          awareness: new Awareness(this.doc),
-          maxConns: 20,
-          filterBcConns: true,
-          peerOpts: {}
-        })
+        // Optional dependency - WebRTC is not required for basic functionality
+        return null // Disable WebRTC for now to avoid import errors
       } catch (error) {
         console.warn('WebRTC provider not available:', error)
         return null

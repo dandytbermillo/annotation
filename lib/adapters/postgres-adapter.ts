@@ -28,11 +28,32 @@ if (typeof window !== 'undefined') {
   )
 }
 
+// Configuration for compaction thresholds
+export interface CompactionConfig {
+  updateThreshold: number  // Default: 100
+  sizeThreshold: number    // Default: 1MB (in bytes)
+  autoCompact: boolean     // Default: true
+  keepSnapshots: number    // Default: 3
+}
+
+export interface DocumentStats {
+  updateCount: number
+  totalSize: number
+  lastSnapshot?: Date
+  oldestUpdate?: Date
+}
+
 export class PostgresPersistenceAdapter implements PersistenceProvider {
   private pool: Pool
   private maxRetries = 3
   private retryDelay = 1000 // ms
   private connected = false
+  private compactionConfig: CompactionConfig = {
+    updateThreshold: 100,
+    sizeThreshold: 1024 * 1024, // 1MB
+    autoCompact: true,
+    keepSnapshots: 3
+  }
 
   constructor(connectionString?: string) {
     // Use provided connection string or fall back to environment variable
@@ -138,7 +159,7 @@ export class PostgresPersistenceAdapter implements PersistenceProvider {
    * Persist a YJS update to the database
    */
   async persist(docName: string, update: Uint8Array): Promise<void> {
-    return this.withRetry(async () => {
+    await this.withRetry(async () => {
       // Convert Uint8Array to Buffer for pg driver
       const updateBuffer = Buffer.from(update)
 
@@ -153,6 +174,37 @@ export class PostgresPersistenceAdapter implements PersistenceProvider {
         process.env.CLIENT_ID || 'postgres-adapter'
       ])
     })
+    
+    // Check if auto-compaction is needed (async, non-blocking)
+    if (this.compactionConfig.autoCompact) {
+      // Run compaction check asynchronously to avoid blocking persist
+      this.checkAndCompact(docName).catch(err => {
+        console.error(`Auto-compaction check failed for ${docName}:`, err)
+      })
+    }
+  }
+  
+  /**
+   * Check if compaction is needed and run it
+   */
+  private async checkAndCompact(docName: string): Promise<void> {
+    try {
+      const stats = await this.getDocumentStats(docName)
+      if (this.shouldCompact(stats)) {
+        console.log(`Auto-compacting ${docName} due to:`, {
+          updateCount: stats.updateCount,
+          totalSize: stats.totalSize,
+          thresholds: {
+            updateThreshold: this.compactionConfig.updateThreshold,
+            sizeThreshold: this.compactionConfig.sizeThreshold
+          }
+        })
+        await this.compact(docName)
+      }
+    } catch (error) {
+      // Log but don't throw - compaction failures shouldn't break persistence
+      console.error(`Auto-compaction failed for ${docName}:`, error)
+    }
   }
 
   /**
@@ -275,18 +327,102 @@ export class PostgresPersistenceAdapter implements PersistenceProvider {
   }
 
   /**
+   * Get statistics about a document for compaction decisions
+   */
+  private async getDocumentStats(docName: string): Promise<DocumentStats> {
+    const query = `
+      SELECT 
+        COUNT(*) as update_count,
+        COALESCE(SUM(LENGTH(update::text)), 0) as total_size,
+        MIN(timestamp) as oldest_update
+      FROM yjs_updates
+      WHERE doc_name = $1
+    `
+    
+    const snapshotQuery = `
+      SELECT created_at 
+      FROM snapshots 
+      WHERE doc_name = $1 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `
+    
+    const [updateResult, snapshotResult] = await Promise.all([
+      this.pool.query(query, [docName]),
+      this.pool.query(snapshotQuery, [docName])
+    ])
+    
+    return {
+      updateCount: parseInt(updateResult.rows[0]?.update_count || '0'),
+      totalSize: parseInt(updateResult.rows[0]?.total_size || '0'),
+      oldestUpdate: updateResult.rows[0]?.oldest_update,
+      lastSnapshot: snapshotResult.rows[0]?.created_at
+    }
+  }
+
+  /**
+   * Check if compaction is needed based on configuration
+   */
+  private shouldCompact(stats: DocumentStats, config?: CompactionConfig): boolean {
+    const cfg = config || this.compactionConfig
+    
+    // Don't compact if no updates
+    if (stats.updateCount === 0) return false
+    
+    // Check thresholds
+    if (stats.updateCount >= cfg.updateThreshold) return true
+    if (stats.totalSize >= cfg.sizeThreshold) return true
+    
+    // Check time since last snapshot (compact if older than 24 hours)
+    if (stats.lastSnapshot) {
+      const hoursSinceSnapshot = (Date.now() - new Date(stats.lastSnapshot).getTime()) / (1000 * 60 * 60)
+      if (hoursSinceSnapshot > 24) return true
+    }
+    
+    return false
+  }
+
+  /**
+   * Log compaction operation
+   */
+  private async logCompaction(
+    client: PoolClient,
+    docName: string,
+    updatesBefore: number,
+    updatesAfter: number,
+    snapshotSize: number,
+    duration: number
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO compaction_log (doc_name, updates_before, updates_after, snapshot_size, duration_ms)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [docName, updatesBefore, updatesAfter, snapshotSize, duration]
+    )
+  }
+
+  /**
    * Compact storage by merging updates into a snapshot
    * This improves performance by reducing the number of updates to replay
    */
-  async compact(docName: string): Promise<void> {
+  async compact(docName: string, config?: CompactionConfig): Promise<void> {
     return this.withRetry(async () => {
+      const startTime = Date.now()
+      const cfg = config || this.compactionConfig
+      
+      // Check if compaction is needed
+      const stats = await this.getDocumentStats(docName)
+      if (!this.shouldCompact(stats, cfg)) {
+        console.log(`Compaction not needed for ${docName}:`, stats)
+        return
+      }
+      
       // Use a transaction to ensure consistency
       const client = await this.pool.connect()
       
       try {
         await client.query('BEGIN')
 
-        // Get all updates
+        // 1. Get all updates
         const updatesResult = await client.query(
           'SELECT update FROM yjs_updates WHERE doc_name = $1 ORDER BY timestamp ASC',
           [docName]
@@ -297,36 +433,56 @@ export class PostgresPersistenceAdapter implements PersistenceProvider {
           return
         }
 
-        // Merge all updates into a single state
+        // 2. Extract note_id from doc_name if applicable
+        let noteId: string | null = null
+        const noteMatch = docName.match(/^note:(.+)$/)
+        if (noteMatch) {
+          noteId = noteMatch[1]
+        }
+
+        // 3. Merge using YJS efficient merge (similar to V2)
+        const updates = updatesResult.rows.map(row => new Uint8Array(row.update))
+        const mergedUpdate = updates.length > 1 ? Y.mergeUpdates(updates) : updates[0]
+        
+        // 4. Apply to fresh document for clean state
         const doc = new Y.Doc()
-        updatesResult.rows.forEach(row => {
-          const update = new Uint8Array(row.update)
-          Y.applyUpdate(doc, update)
-        })
-
-        const mergedState = Y.encodeStateAsUpdate(doc)
-
-        // Save as snapshot
-        await this.saveSnapshot(docName, mergedState)
-
-        // Clear old updates
+        Y.applyUpdate(doc, mergedUpdate)
+        
+        // 5. Create snapshot with metadata
+        const snapshot = Y.encodeStateAsUpdate(doc)
+        const checksum = this.calculateChecksum(snapshot)
+        
         await client.query(
-          'DELETE FROM yjs_updates WHERE doc_name = $1',
-          [docName]
+          `INSERT INTO snapshots (note_id, doc_name, state, update_count, size_bytes, checksum, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [noteId, docName, Buffer.from(snapshot), updatesResult.rows.length, snapshot.byteLength, checksum]
         )
 
-        // Optionally clean up old snapshots (keep only the most recent N)
-        const retentionDays = parseInt(process.env.SNAPSHOT_RETENTION_DAYS || '30')
+        // 6. Delete old updates
+        await client.query('DELETE FROM yjs_updates WHERE doc_name = $1', [docName])
+
+        // 7. Keep only last N snapshots
         await client.query(
           `DELETE FROM snapshots 
-           WHERE doc_name = $1 
-           AND created_at < NOW() - INTERVAL '${retentionDays} days'`,
-          [docName]
+           WHERE doc_name = $1 AND id NOT IN (
+             SELECT id FROM snapshots 
+             WHERE doc_name = $1 
+             ORDER BY created_at DESC 
+             LIMIT $2
+           )`,
+          [docName, cfg.keepSnapshots]
         )
 
+        // 8. Log compaction
+        const duration = Date.now() - startTime
+        await this.logCompaction(client, docName, updatesResult.rows.length, 0, snapshot.byteLength, duration)
+
         await client.query('COMMIT')
+        
+        console.log(`Compaction completed for ${docName}: ${updatesResult.rows.length} updates -> 1 snapshot (${snapshot.byteLength} bytes) in ${duration}ms`)
       } catch (error) {
         await client.query('ROLLBACK')
+        console.error(`Compaction failed for ${docName}:`, error)
         throw error
       } finally {
         client.release()
@@ -344,6 +500,131 @@ export class PostgresPersistenceAdapter implements PersistenceProvider {
       hash = hash & hash // Convert to 32-bit integer
     }
     return Math.abs(hash).toString(16)
+  }
+
+  /**
+   * Delete a note and all its associated data
+   * Uses soft delete for notes, panels, and branches tables
+   * Hard deletes YJS updates and snapshots
+   */
+  async deleteNote(noteId: string): Promise<void> {
+    const client = await this.pool.connect()
+    
+    try {
+      await client.query('BEGIN')
+      
+      // 1. Soft delete the note first
+      await client.query(
+        'UPDATE notes SET deleted_at = NOW() WHERE id = $1',
+        [noteId]
+      )
+      
+      // 2. Delete YJS updates for note and all panels
+      await client.query(
+        `DELETE FROM yjs_updates 
+         WHERE doc_name = $1 OR doc_name LIKE $2`,
+        [`note:${noteId}`, `panel:${noteId}:%`]
+      )
+      
+      // 3. Delete snapshots
+      await client.query(
+        'DELETE FROM snapshots WHERE note_id = $1',
+        [noteId]
+      )
+      
+      // 4. Soft delete panels
+      await client.query(
+        'UPDATE panels SET deleted_at = NOW() WHERE note_id = $1',
+        [noteId]
+      )
+      
+      // 5. Soft delete branches (renamed from annotations)
+      await client.query(
+        'UPDATE branches SET deleted_at = NOW() WHERE note_id = $1',
+        [noteId]
+      )
+      
+      await client.query('COMMIT')
+      
+      console.log(`Successfully deleted note ${noteId} and all associated data`)
+      
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw new Error(`Failed to delete note ${noteId}: ${error.message}`)
+    } finally {
+      client.release()
+    }
+  }
+  
+  /**
+   * Hard delete for permanent removal
+   * WARNING: This permanently removes all data and cannot be undone
+   */
+  async hardDeleteNote(noteId: string): Promise<void> {
+    const client = await this.pool.connect()
+    
+    try {
+      await client.query('BEGIN')
+      
+      // Delete in reverse order of dependencies
+      
+      // 1. Delete YJS updates
+      await client.query(
+        `DELETE FROM yjs_updates 
+         WHERE doc_name = $1 OR doc_name LIKE $2`,
+        [`note:${noteId}`, `panel:${noteId}:%`]
+      )
+      
+      // 2. Delete snapshots
+      await client.query(
+        'DELETE FROM snapshots WHERE note_id = $1',
+        [noteId]
+      )
+      
+      // 3. Delete branches
+      await client.query(
+        'DELETE FROM branches WHERE note_id = $1',
+        [noteId]
+      )
+      
+      // 4. Delete panels
+      await client.query(
+        'DELETE FROM panels WHERE note_id = $1',
+        [noteId]
+      )
+      
+      // 5. Delete the note itself
+      await client.query(
+        'DELETE FROM notes WHERE id = $1',
+        [noteId]
+      )
+      
+      await client.query('COMMIT')
+      
+      console.log(`Permanently deleted note ${noteId} and all associated data`)
+      
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw new Error(`Failed to permanently delete note ${noteId}: ${error.message}`)
+    } finally {
+      client.release()
+    }
+  }
+  
+  /**
+   * Notify other clients about deletion (placeholder for awareness integration)
+   */
+  private notifyDeletion(noteId: string): void {
+    // TODO: Integrate with awareness protocol to notify other clients
+    // This would typically emit an event or update a shared state
+    console.log(`Deletion notification for note ${noteId} would be sent to other clients`)
+  }
+
+  /**
+   * Execute a raw query (for internal use and API routes)
+   */
+  async query(text: string, params?: any[]): Promise<any> {
+    return this.pool.query(text, params)
   }
 
   /**
