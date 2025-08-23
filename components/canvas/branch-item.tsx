@@ -1,7 +1,7 @@
 "use client"
 
 import { useCanvas } from "./canvas-context"
-import { CollaborationProvider } from "@/lib/yjs-provider"
+import { UnifiedProvider } from "@/lib/provider-switcher"
 
 interface BranchItemProps {
   branchId: string
@@ -12,7 +12,7 @@ export function BranchItem({ branchId, parentId }: BranchItemProps) {
   const { dataStore, dispatch, state } = useCanvas()
   
   // Get branch data from CollaborationProvider
-  const provider = CollaborationProvider.getInstance()
+  const provider = UnifiedProvider.getInstance()
   const branchesMap = provider.getBranchesMap()
   const branch = branchesMap.get(branchId) || dataStore.get(branchId)
 

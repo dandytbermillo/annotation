@@ -73,7 +73,7 @@ Migrate local persistence from IndexedDB to a local PostgreSQL instance. All not
 
 ## DATA MODEL SKELETON (suggested)
 - **notes** (id uuid, title text, created_at timestamptz, updated_at timestamptz, metadata jsonb)
-- **annotations** (id uuid, note_id uuid, type text, anchors bytea/jsonb, metadata jsonb, version int)
+- **branches** (id uuid, note_id uuid, type text, anchors bytea/jsonb, metadata jsonb, version int)
 - **panels** (id uuid, note_id uuid, position jsonb, dimensions jsonb, state text, last_accessed timestamptz)
 - **snapshots** (id uuid, note_id uuid, snapshot bytea, created_at timestamptz)
 
@@ -180,19 +180,53 @@ npm run test:e2e
 - Agents must **not** reimplement Postgres setup; only use the existing service.
 
 
- ## ERRORS / TEST FAILURES (from attempt 1)
- Build Error
+## MISSING / TO IMPLEMENT (from previous PRP)
+Most critical first:
+  - Item 0 - Run the database migration (currently only 2 of 6 tables
+  exist)
 
-Module not found: Can't resolve 'fs'
-./node_modules/pg-connection-string/index.js (81:1)
+  Then the core implementation tasks (1-7):
+  1. Database connection pooling
+  2. API helper utilities
+  3. API route fixes and new endpoints
+  4. Adapter improvements (retry logic, base64, client IDs)
+  5. Platform detection enhancements
+  6. Provider integration updates
+  7. Test coverage
+ 8. Documentation and naming consistency
+  - Fix data model documentation - INITIAL.md line
+   76 refers to "annotations" table but the actual
+   migration and codebase uses "branches" table
+  - Update all references from "annotations" to
+  "branches" for consistency across:
+    - INITIAL.md data model section
+    - Code comments referring to annotation
+  storage
+    - Any API documentation
+  - This naming mismatch could cause confusion
+  during implementation
+  
+  0. Database Setup (NEW - CRITICAL)
 
-Module not found: Can't resolve 'fs'
-  79 |
-  80 |   // Only try to load fs if we expect to read from the disk
-> 81 |   const fs = config.sslcert || config.sslkey || config.sslrootcert ? require('fs') : null
-     | ^
-  82 |
-  83 |   if (config.sslcert) {
-  84 |     config.ssl.cert = fs.readFileSync(config.sslcert).toString()
+  - Run the complete migration - Execute
+  migrations/001_initial_schema.up.sql to create all 6 tables:
+    - notes (main documents)
+    - branches (annotations)
+    - panels (canvas panels)
+    - connections (panel relationships)
+    - Plus the existing yjs_updates and snapshots
 
-https://nextjs.org/docs/messages/module-not-found
+  This needs to be done first before the other implementations will
+  work properly, as the code expects all 6 tables to exist.
+
+  To run the migration:
+  docker exec -i annotation_postgres psql -U postgres -d
+  annotation_system < migrations/001_initial_schema.up.sql
+
+
+  The PRP was very comprehensive but the actual implementation is only
+  partially complete. The existing code has:
+  - ✅ Basic API route (but needs fixes)
+  - ✅ Basic browser adapter (but missing features)
+  - ✅ Migration files (but not executed)
+  - ❌ All the other components listed above

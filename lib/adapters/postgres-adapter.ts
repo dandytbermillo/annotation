@@ -1,20 +1,32 @@
 /**
- * PostgreSQL Persistence Adapter for YJS Annotation System
+ * PostgreSQL Persistence Adapter for YJS Annotation System (Server-Side Only)
  * 
  * This adapter implements the PersistenceProvider interface using PostgreSQL
  * as the backing store. It follows an event-sourcing pattern, storing individual
  * YJS updates and periodically creating snapshots for performance.
  * 
+ * IMPORTANT: This adapter is for server-side use only (Node.js environments).
+ * For browser-based applications, use PostgresClientAdapter or PostgresAPIAdapter.
+ * 
  * Key principles:
  * - YJS remains the source of truth for real-time sync
  * - PostgreSQL is used only for persistence, not real-time collaboration
  * - Binary YJS data is stored in BYTEA columns
- * - Supports both Web (via API) and Electron (direct connection) platforms
+ * - Direct database connection requires Node.js runtime
+ * - Supports server-side Next.js API routes and Electron apps
  */
 
 import { Pool, PoolClient } from 'pg'
 import * as Y from 'yjs'
 import { PersistenceProvider } from '../enhanced-yjs-provider'
+
+// Server-side only check - this adapter cannot be used in browser contexts
+if (typeof window !== 'undefined') {
+  throw new Error(
+    'PostgresPersistenceAdapter cannot be used in browser contexts. ' +
+    'Please use PostgresClientAdapter or PostgresAPIAdapter for browser-based applications.'
+  )
+}
 
 export class PostgresPersistenceAdapter implements PersistenceProvider {
   private pool: Pool

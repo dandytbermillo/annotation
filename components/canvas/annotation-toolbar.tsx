@@ -2,7 +2,7 @@
 
 import { useCanvas } from "./canvas-context"
 import { v4 as uuidv4 } from "uuid"
-import { CollaborationProvider } from "@/lib/yjs-provider"
+import { UnifiedProvider } from "@/lib/provider-switcher"
 
 export function AnnotationToolbar() {
   const { dispatch, state, dataStore, noteId } = useCanvas()
@@ -37,7 +37,7 @@ export function AnnotationToolbar() {
     dataStore.set(branchId, branchData)
     
     // Use new YJS native types approach via CollaborationProvider
-    const provider = CollaborationProvider.getInstance()
+    const provider = UnifiedProvider.getInstance()
     if (noteId) {
       provider.setCurrentNote(noteId)
     }

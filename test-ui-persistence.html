@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UI Persistence Test</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            background: #f6f8fa;
+        }
+        .status { 
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0052a3; }
+        .data-display {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🐘 PostgreSQL Persistence UI Test</h1>
+    <p>This page tests the actual UI integration with PostgreSQL persistence.</p>
+
+    <div class="test-section">
+        <h2>1. Connection Status</h2>
+        <div id="connection-status" class="status info">Checking connection...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Create Test Document</h2>
+        <button onclick="createTestDocument()">Create Document</button>
+        <button onclick="updateDocument()">Update Document</button>
+        <div id="doc-status" class="data-display"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Database Status</h2>
+        <button onclick="checkDatabase()">Check Database</button>
+        <div id="db-status" class="data-display"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Real-time Monitor</h2>
+        <button onclick="startMonitoring()">Start Monitoring</button>
+        <button onclick="stopMonitoring()">Stop Monitoring</button>
+        <div id="monitor" class="data-display"></div>
+    </div>
+
+    <script>
+        let monitorInterval = null;
+        let testDocName = 'ui-test-' + Date.now();
+        let updateCount = 0;
+
+        // Check initial connection
+        async function checkConnection() {
+            try {
+                const res = await fetch('/api/persistence/health');
+                const data = await res.json();
+                
+                const statusEl = document.getElementById('connection-status');
+                if (data.healthy) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = `✅ PostgreSQL Connected (latency: ${data.latency}ms)`;
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = '❌ PostgreSQL Not Available';
+                }
+                
+                // Check persistence mode
+                const mode = localStorage.getItem('persistence-mode') || 'auto';
+                statusEl.textContent += ` | Mode: ${mode}`;
+                
+            } catch (error) {
+                document.getElementById('connection-status').className = 'status error';
+                document.getElementById('connection-status').textContent = '❌ Connection Error: ' + error.message;
+            }
+        }
+
+        // Create a test document
+        async function createTestDocument() {
+            try {
+                const content = {
+                    title: 'Test Document',
+                    content: 'This is a test document created at ' + new Date().toISOString(),
+                    metadata: {
+                        createdBy: 'UI Test',
+                        version: 1
+                    }
+                };
+
+                // Convert to base64
+                const update = btoa(JSON.stringify(content));
+
+                const res = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'persist',
+                        docName: testDocName,
+                        update: update,
+                        clientId: 'ui-test-client'
+                    })
+                });
+
+                const data = await res.json();
+                
+                const statusEl = document.getElementById('doc-status');
+                if (res.ok && data.success) {
+                    statusEl.textContent = `✅ Document created: ${testDocName}\n` +
+                        `Response: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    statusEl.textContent = `❌ Failed to create document: ${JSON.stringify(data, null, 2)}`;
+                }
+
+            } catch (error) {
+                document.getElementById('doc-status').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        // Update the document
+        async function updateDocument() {
+            updateCount++;
+            
+            try {
+                const update = {
+                    updateNumber: updateCount,
+                    timestamp: new Date().toISOString(),
+                    content: `Update #${updateCount} from UI test`
+                };
+
+                const res = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'persist',
+                        docName: testDocName,
+                        update: btoa(JSON.stringify(update)),
+                        clientId: 'ui-test-client'
+                    })
+                });
+
+                const data = await res.json();
+                
+                const statusEl = document.getElementById('doc-status');
+                if (res.ok && data.success) {
+                    statusEl.textContent = `✅ Update #${updateCount} saved\n` +
+                        `Document: ${testDocName}\n` +
+                        `Response: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    statusEl.textContent = `❌ Failed to update: ${JSON.stringify(data, null, 2)}`;
+                }
+
+            } catch (error) {
+                document.getElementById('doc-status').textContent = '❌ Update Error: ' + error.message;
+            }
+        }
+
+        // Check database status
+        async function checkDatabase() {
+            try {
+                // Get all updates for our test document
+                const res = await fetch('/api/persistence/updates?docName=' + testDocName);
+                const data = await res.json();
+                
+                const statusEl = document.getElementById('db-status');
+                statusEl.textContent = `📊 Database Status for: ${testDocName}\n\n`;
+                
+                if (data.updates && data.updates.length > 0) {
+                    statusEl.textContent += `Found ${data.updates.length} updates:\n\n`;
+                    
+                    data.updates.forEach((update, i) => {
+                        statusEl.textContent += `Update ${i + 1}:\n`;
+                        statusEl.textContent += `  Client ID: ${update.clientId}\n`;
+                        statusEl.textContent += `  Timestamp: ${update.timestamp}\n`;
+                        statusEl.textContent += `  Size: ${update.update.length} chars\n`;
+                        
+                        try {
+                            const decoded = JSON.parse(atob(update.update));
+                            statusEl.textContent += `  Content: ${JSON.stringify(decoded, null, 2)}\n`;
+                        } catch {
+                            statusEl.textContent += `  Content: [Binary Data]\n`;
+                        }
+                        statusEl.textContent += '\n';
+                    });
+                } else {
+                    statusEl.textContent += 'No updates found in database.';
+                }
+
+                // Also check compact status
+                const compactRes = await fetch('/api/persistence/compact?docName=' + testDocName);
+                const compactData = await compactRes.json();
+                
+                statusEl.textContent += '\n📦 Compact Status:\n';
+                statusEl.textContent += JSON.stringify(compactData, null, 2);
+
+            } catch (error) {
+                document.getElementById('db-status').textContent = '❌ Database Check Error: ' + error.message;
+            }
+        }
+
+        // Real-time monitoring
+        async function startMonitoring() {
+            if (monitorInterval) return;
+            
+            const monitorEl = document.getElementById('monitor');
+            monitorEl.textContent = '👁️ Monitoring started...\n\n';
+            
+            monitorInterval = setInterval(async () => {
+                try {
+                    // Check health
+                    const healthRes = await fetch('/api/persistence/health');
+                    const health = await healthRes.json();
+                    
+                    // Count total updates
+                    const countRes = await fetch('/api/persistence', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'getAllUpdates',
+                            docName: testDocName
+                        })
+                    });
+                    const countData = await countRes.json();
+                    
+                    const now = new Date().toLocaleTimeString();
+                    monitorEl.textContent = `👁️ Real-time Monitor (${now})\n\n`;
+                    monitorEl.textContent += `PostgreSQL: ${health.healthy ? '✅ Connected' : '❌ Disconnected'}\n`;
+                    monitorEl.textContent += `Pool Status: ${JSON.stringify(health.poolStatus)}\n`;
+                    monitorEl.textContent += `Document Updates: ${countData.updates ? countData.updates.length : 0}\n`;
+                    
+                    if (countData.updates && countData.updates.length > 0) {
+                        const latest = countData.updates[countData.updates.length - 1];
+                        monitorEl.textContent += `\nLatest Update:\n`;
+                        monitorEl.textContent += `  Time: ${latest.timestamp}\n`;
+                        monitorEl.textContent += `  Client: ${latest.clientId}\n`;
+                    }
+                    
+                } catch (error) {
+                    monitorEl.textContent += '\n❌ Monitor Error: ' + error.message;
+                }
+            }, 2000);
+        }
+
+        function stopMonitoring() {
+            if (monitorInterval) {
+                clearInterval(monitorInterval);
+                monitorInterval = null;
+                document.getElementById('monitor').textContent += '\n\n⏹️ Monitoring stopped.';
+            }
+        }
+
+        // Initialize
+        checkConnection();
+        
+        // Also show instructions
+        console.log(`
+🔍 Testing PostgreSQL Persistence
+
+1. Open the main app at http://localhost:3001
+2. Create and edit some panels
+3. Use this test page to verify data is being saved
+4. Check the database directly with:
+
+docker exec annotation_postgres psql -U postgres -d annotation_system -c "SELECT * FROM yjs_updates ORDER BY timestamp DESC LIMIT 10;"
+        `);
+    </script>
+</body>
+</html>

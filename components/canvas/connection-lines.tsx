@@ -1,13 +1,13 @@
 "use client"
 
-import { CollaborationProvider } from "@/lib/yjs-provider"
+import { UnifiedProvider } from "@/lib/provider-switcher"
 
 interface ConnectionLinesProps {
   panels: string[]
 }
 
 export function ConnectionLines({ panels }: ConnectionLinesProps) {
-  const provider = CollaborationProvider.getInstance()
+  const provider = UnifiedProvider.getInstance()
   const branches = provider.getBranchesMap()
   
   const connections: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = []
