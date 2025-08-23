@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PostgreSQL Persistence Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { background: #e7ffe7; }
+        .error { background: #ffe7e7; }
+        button { padding: 10px 20px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>PostgreSQL Persistence Browser Test</h1>
+    <button onclick="runTests()">Run Tests</button>
+    <div id="results"></div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        function log(message, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'test ' + (isError ? 'error' : 'success');
+            div.textContent = message;
+            resultsDiv.appendChild(div);
+        }
+
+        async function runTests() {
+            resultsDiv.innerHTML = '';
+            
+            try {
+                // Test 1: Health Check
+                log('Testing health endpoint...');
+                const healthRes = await fetch('/api/persistence/health');
+                const healthData = await healthRes.json();
+                log(`Health check: ${healthRes.status} - ${JSON.stringify(healthData)}`);
+                
+                // Test 2: Persist data
+                log('Testing persist action...');
+                const docName = 'browser-test-' + Date.now();
+                const persistRes = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'persist',
+                        docName: docName,
+                        update: btoa('Test from browser'),
+                        clientId: 'browser-test'
+                    })
+                });
+                const persistData = await persistRes.json();
+                log(`Persist: ${persistRes.status} - ${JSON.stringify(persistData)}`);
+                
+                // Test 3: Load data
+                log('Testing load action...');
+                const loadRes = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'load',
+                        docName: docName
+                    })
+                });
+                const loadData = await loadRes.json();
+                log(`Load: ${loadRes.status} - ${JSON.stringify(loadData)}`);
+                
+                // Test 4: Get all updates
+                log('Testing getAllUpdates action...');
+                const updatesRes = await fetch('/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'getAllUpdates',
+                        docName: docName
+                    })
+                });
+                const updatesData = await updatesRes.json();
+                log(`Get all updates: ${updatesRes.status} - ${JSON.stringify(updatesData)}`);
+                
+                // Test 5: Specialized endpoints
+                log('Testing specialized endpoints...');
+                
+                const updateEndpointRes = await fetch(`/api/persistence/updates?docName=${docName}`);
+                const updateEndpointData = await updateEndpointRes.json();
+                log(`Updates endpoint: ${updateEndpointRes.status} - ${JSON.stringify(updateEndpointData)}`);
+                
+                const compactEndpointRes = await fetch(`/api/persistence/compact?docName=${docName}`);
+                const compactEndpointData = await compactEndpointRes.json();
+                log(`Compact endpoint: ${compactEndpointRes.status} - ${JSON.stringify(compactEndpointData)}`);
+                
+                log('✅ All tests completed!');
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, true);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,4 +1,6 @@
 name: "PostgreSQL Persistence Fix - Enhanced Browser/Server Context Separation"
+version: 2
+last_updated: 2025-01-23
 description: |
 
 ## Purpose
@@ -35,11 +37,13 @@ Fix the PostgreSQL adapter to work in all environments by:
 
 ### Success Criteria
 - [ ] No build errors related to `fs` module in browser context
-- [ ] PostgreSQL persistence works in Web (via API)
+- [x] PostgreSQL persistence works in Web (via API) - Basic persist works
 - [ ] PostgreSQL persistence works in Electron (direct)
 - [ ] Proper fallback to IndexedDB when PostgreSQL unavailable
 - [ ] All existing tests pass
 - [ ] Integration tests pass with PostgreSQL
+- [ ] All 6 database tables created and functional
+- [ ] Documentation naming consistency (branches vs annotations)
 
 ## All Needed Context
 
@@ -170,6 +174,34 @@ Fix the PostgreSQL adapter to work in all environments by:
 // - Separate unit and integration tests
 ```
 
+## Current Implementation Status (v2 Update)
+
+### Completed
+- ✅ Basic API route at `/api/persistence/route.ts` (needs fixes)
+- ✅ Basic browser adapter (`postgres-api-adapter.ts`) (missing features)
+- ✅ Migration files created (`001_initial_schema.up.sql`, `001_initial_schema.down.sql`)
+- ✅ Basic persist operation works via API
+
+### Issues Found
+1. **Database**: Only 2 of 6 tables exist (migration not fully executed)
+2. **Type errors**: 65 TypeScript errors preventing clean build
+3. **Load operation failing**: "Unexpected end of array" error
+4. **Missing dependencies**: y-webrtc module import warning
+5. **Routing**: Using "method" instead of "action" parameter
+6. **Binary handling**: Using array serialization instead of base64
+7. **Documentation**: INITIAL.md refers to "annotations" table but migration uses "branches"
+
+### Still Missing (Priority Order)
+0. **Database Setup** - Run complete migration to create all 6 tables
+1. **Database Layer** - Connection pool manager (`lib/db/postgres-pool.ts`)
+2. **API Helpers** - Binary conversion, error handling (`lib/api/persistence-helpers.ts`)
+3. **API Routes** - Specialized endpoints (`/updates`, `/snapshots`, `/compact`)
+4. **Adapter Updates** - Retry logic, base64 encoding, client IDs
+5. **Platform Detection** - Server-side detection functions
+6. **Provider Integration** - PostgresClientAdapter import
+7. **Test Coverage** - Unit and integration tests
+8. **Documentation** - Fix naming consistency (annotations → branches)
+
 ## Implementation Blueprint
 
 ### Data models and structure
@@ -179,7 +211,7 @@ Database schema already exists in migrations/001_initial_schema.up.sql:
 -- Key tables:
 -- yjs_updates: Event sourcing pattern for YJS updates
 -- notes: Main documents
--- branches: Annotations with Y.RelativePosition anchors
+-- branches: Annotations with Y.RelativePosition anchors (NOTE: table is "branches", not "annotations")
 -- panels: Canvas panels with positions
 -- snapshots: Periodic state captures
 -- connections: Panel relationships
@@ -193,6 +225,12 @@ Database schema already exists in migrations/001_initial_schema.up.sql:
 ### List of tasks to be completed in order
 
 ```yaml
+Task 0: Execute database migration (CRITICAL - DO FIRST)
+RUN migrations/001_initial_schema.up.sql:
+  - Execute: docker exec -i annotation_postgres psql -U postgres -d annotation_system < migrations/001_initial_schema.up.sql
+  - Verify all 6 tables created: notes, branches, panels, connections, yjs_updates, snapshots
+  - Without this, API calls will fail with table not found errors
+
 Task 1: Create PostgreSQL connection pool manager
 CREATE lib/db/postgres-pool.ts:
   - Singleton pool instance (follow postgres-adapter.ts pattern)
@@ -208,8 +246,9 @@ CREATE lib/api/persistence-helpers.ts:
   - Request validation
   - Action routing pattern
 
-Task 3: Create main persistence API route
-CREATE app/api/persistence/route.ts:
+Task 3: Fix main persistence API route
+UPDATE app/api/persistence/route.ts:
+  - Change from "method" to "action" based routing
   - POST handler with action-based routing
   - Import pool from postgres-pool.ts
   - Handle persist/load/getAllUpdates/clearUpdates actions
@@ -280,6 +319,13 @@ CREATE tests/api/persistence.test.ts:
   - Mock database pool
   - Test binary data handling
   - Test error responses
+
+Task 11: Fix documentation naming consistency
+UPDATE documentation and comments:
+  - Fix INITIAL.md line 76: Change "annotations" to "branches" table
+  - Search codebase for comments mentioning "annotations table" and update to "branches"
+  - Ensure consistency across all documentation
+  - Update any API documentation that refers to annotations storage
 ```
 
 ### Per task pseudocode
@@ -594,18 +640,20 @@ console.log('Not found:', notFound); // Should print: null
 ```
 
 ## Final validation Checklist
-- [ ] No build errors in browser context
+- [ ] No build errors in browser context (Currently: y-webrtc warning)
 - [ ] All tests pass: `npm test`
-- [ ] No linting errors: `npm run lint`
-- [ ] No type errors: `npm run type-check`
-- [ ] API routes respond correctly to curl tests
-- [ ] Browser can persist/load via API
+- [ ] No linting errors: `npm run lint` 
+- [ ] No type errors: `npm run type-check` (Currently: 65 errors)
+- [x] API routes respond correctly to curl tests (Basic persist works)
+- [x] Browser can persist/load via API (Persist works, load fails)
 - [ ] Server can persist/load directly
 - [ ] Fallback to IndexedDB works when PostgreSQL unavailable
-- [ ] PostgreSQL data is properly stored (check with psql)
+- [x] PostgreSQL data is properly stored (check with psql) (2 tables only)
 - [ ] Binary YJS data handled correctly (no corruption)
 - [ ] Retry logic works for transient errors
 - [ ] Error messages are helpful and specific
+- [ ] All 6 database tables exist and functional
+- [ ] Documentation naming is consistent (branches vs annotations)
 
 ---
 
@@ -651,12 +699,20 @@ console.log('Not found:', notFound); // Should print: null
 4. Database schema is complete and well-documented in migrations
 5. Follow the existing PersistenceProvider interface exactly for compatibility
 
-## Success Confidence Score: 9.5/10
-Very high confidence due to:
+## Success Confidence Score: 8/10 (v2)
+Good confidence for completing the remaining implementation:
 - Comprehensive existing patterns to follow
-- Clear separation of browser/server contexts
+- Clear separation of browser/server contexts  
 - Well-defined database schema already in place
 - Existing test patterns to adapt
 - Proper error handling patterns established
 - All architectural requirements maintained
 - Clear validation steps at each level
+
+Points deducted for:
+- Partial implementation with some incorrect patterns (method vs action)
+- Type errors indicating architectural issues to resolve
+- Missing critical components (connection pooling, binary handling)
+- Database migration not executed
+
+With Task 0 (migration) completed first, success rate increases to 9/10.

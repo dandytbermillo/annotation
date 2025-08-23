@@ -275,15 +275,15 @@ export class EnhancedCollaborationProvider {
     
     switch (preferredPersistence) {
       case 'postgres':
-        // Use API adapter for PostgreSQL in the browser
-        if (typeof window !== 'undefined') {
-          console.log('Using PostgreSQL via API routes')
-          this.persistence = new PostgresAPIAdapter()
-        } else {
-          // Server-side would use direct adapter (not implemented in this context)
-          console.warn('Direct PostgreSQL adapter not available, using API adapter')
-          this.persistence = new PostgresAPIAdapter()
-        }
+        // For now, always use API adapter in browser context
+        // Direct PostgreSQL connection would only work in Electron
+        console.log('Using PostgreSQL via API routes (browser-safe)')
+        this.persistence = new PostgresAPIAdapter()
+        break
+      case 'postgres-client':
+        // PostgreSQL via API routes (browser)
+        console.log('Using PostgreSQL via API routes')
+        this.persistence = new PostgresAPIAdapter()
         break
       case 'sqlite':
         // SQLite is handled by ElectronPersistenceAdapter

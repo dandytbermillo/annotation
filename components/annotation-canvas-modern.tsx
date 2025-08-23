@@ -4,10 +4,12 @@ import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
 import { CanvasProvider } from "./canvas/canvas-context"
 import { CanvasPanel } from "./canvas/canvas-panel"
 import { AnnotationToolbar } from "./canvas/annotation-toolbar"
-import { CollaborationProvider } from "@/lib/yjs-provider"
+import { UnifiedProvider } from "@/lib/provider-switcher"
 import { CanvasControls } from "./canvas/canvas-controls"
 import { Minimap } from "./canvas/minimap"
 import { ConnectionLines } from "./canvas/connection-lines"
+import { PersistenceFallbackDialog } from "./persistence-fallback-dialog"
+import { ConnectionStatus } from "./connection-status"
 
 interface ModernAnnotationCanvasProps {
   noteId: string
@@ -38,10 +40,30 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
   })
 
   const [panels, setPanels] = useState<string[]>([])
+  const [showFallbackDialog, setShowFallbackDialog] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(false)
 
   useEffect(() => {
     // Initialize collaboration provider with YJS persistence
-    const provider = CollaborationProvider.getInstance()
+    const provider = UnifiedProvider.getInstance()
+    
+    // Listen for fallback events
+    const handleFallback = (event: { needsFallback: boolean }) => {
+      if (event.needsFallback) {
+        setShowFallbackDialog(true)
+      }
+    }
+    
+    UnifiedProvider.onFallbackNeeded(handleFallback)
+    
+    return () => {
+      UnifiedProvider.offFallbackNeeded(handleFallback)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Initialize collaboration provider with YJS persistence
+    const provider = UnifiedProvider.getInstance()
     
     // Define default data for new notes
     const defaultData = {
@@ -146,7 +168,7 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
       }
       
       // Ensure the provider knows about the current note
-      const provider = CollaborationProvider.getInstance()
+      const provider = UnifiedProvider.getInstance()
       provider.setCurrentNote(noteId)
       
       // Get the panel data from YJS
@@ -211,12 +233,57 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
     }
   }), [onCanvasStateChange])
 
+  // Handle fallback dialog actions
+  const handleUseLocalStorage = async () => {
+    const provider = UnifiedProvider.getInstance()
+    await provider.switchToIndexedDB()
+    setShowFallbackDialog(false)
+    
+    // Re-initialize the current note with the new provider
+    const defaultData = {
+      'main': {
+        title: 'New Document',
+        type: 'main',
+        content: `<p>Start writing your document here...</p>`,
+        branches: [],
+        position: { x: 2000, y: 1500 },
+        isEditable: true
+      }
+    }
+    provider.initializeDefaultData(noteId, defaultData)
+  }
+
+  const handleRetry = async () => {
+    setIsRetrying(true)
+    const provider = UnifiedProvider.getInstance()
+    const success = await provider.retryPostgresConnection()
+    
+    if (success) {
+      setShowFallbackDialog(false)
+      // Re-initialize with PostgreSQL provider
+      const defaultData = {
+        'main': {
+          title: 'New Document',
+          type: 'main',
+          content: `<p>Start writing your document here...</p>`,
+          branches: [],
+          position: { x: 2000, y: 1500 },
+          isEditable: true
+        }
+      }
+      provider.initializeDefaultData(noteId, defaultData)
+    }
+    
+    setIsRetrying(false)
+  }
+
   return (
     <CanvasProvider noteId={noteId}>
       <div className="w-screen h-screen overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
         {/* Demo Header */}
-        <div className="fixed top-0 left-0 right-0 bg-black/90 backdrop-blur-xl text-white p-3 text-xs font-medium z-[1000] border-b border-white/10">
-          🚀 Yjs-Ready Unified Knowledge Canvas • Collaborative-Ready Architecture with Tiptap Editor
+        <div className="fixed top-0 left-0 right-0 bg-black/90 backdrop-blur-xl text-white p-3 text-xs font-medium z-[1000] border-b border-white/10 flex items-center justify-between">
+          <span>🚀 Yjs-Ready Unified Knowledge Canvas • Collaborative-Ready Architecture with Tiptap Editor</span>
+          <ConnectionStatus />
         </div>
 
         {/* Canvas Controls - Only show when notes explorer is closed */}
@@ -263,7 +330,7 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
 
             {/* Panels */}
             {panels.map(panelId => {
-              const provider = CollaborationProvider.getInstance()
+              const provider = UnifiedProvider.getInstance()
               provider.setCurrentNote(noteId)
               const branchesMap = provider.getBranchesMap()
               const branch = branchesMap.get(panelId)
@@ -292,6 +359,15 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
 
         {/* Annotation Toolbar */}
         <AnnotationToolbar />
+        
+        {/* Persistence Fallback Dialog */}
+        <PersistenceFallbackDialog
+          open={showFallbackDialog}
+          onOpenChange={setShowFallbackDialog}
+          onUseLocalStorage={handleUseLocalStorage}
+          onRetry={handleRetry}
+          isRetrying={isRetrying}
+        />
       </div>
     </CanvasProvider>
   )

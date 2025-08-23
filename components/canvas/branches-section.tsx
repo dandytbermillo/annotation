@@ -3,7 +3,7 @@
 import { useCanvas } from "./canvas-context"
 import type { Branch } from "@/types/canvas"
 import { BranchItem } from "./branch-item"
-import { CollaborationProvider } from "@/lib/yjs-provider"
+import { UnifiedProvider } from "@/lib/provider-switcher"
 import { useEffect, useState } from "react"
 
 interface BranchesSectionProps {
@@ -49,7 +49,7 @@ Features:
 
   const getFilteredBranches = () => {
     // Get branch data from CollaborationProvider
-    const provider = CollaborationProvider.getInstance()
+    const provider = UnifiedProvider.getInstance()
     const branchesMap = provider.getBranchesMap()
     const currentBranch = branchesMap.get(panelId) || dataStore.get(panelId) || branch
     

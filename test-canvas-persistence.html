@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Canvas Persistence Test</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        .info {
+            background: #f0f7ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .status {
+            font-family: monospace;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover { background: #0052a3; }
+    </style>
+</head>
+<body>
+    <h1>🐘 Canvas PostgreSQL Persistence Test</h1>
+    
+    <div class="info">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>The canvas app is loaded below in an iframe</li>
+            <li>Edit the main panel content</li>
+            <li>Click "Check Database" to see if changes are saved to PostgreSQL</li>
+            <li>The database is monitored in real-time</li>
+        </ol>
+    </div>
+
+    <iframe src="http://localhost:3001" id="canvas-frame"></iframe>
+
+    <div class="test-section">
+        <h3>Database Monitor</h3>
+        <button onclick="checkDatabase()">Check Database</button>
+        <button onclick="startMonitor()">Start Auto-Monitor</button>
+        <button onclick="stopMonitor()">Stop Monitor</button>
+        <div id="db-status" class="status">Click "Check Database" to see PostgreSQL data...</div>
+    </div>
+
+    <div class="test-section">
+        <h3>Connection Status</h3>
+        <div id="connection-status" class="status">Checking...</div>
+    </div>
+
+    <script>
+        let monitorInterval = null;
+
+        async function checkConnection() {
+            try {
+                const res = await fetch('http://localhost:3001/api/persistence/health');
+                const data = await res.json();
+                
+                document.getElementById('connection-status').innerHTML = 
+                    `PostgreSQL: ${data.healthy ? '✅ Connected' : '❌ Disconnected'}<br>` +
+                    `Latency: ${data.latency}ms<br>` +
+                    `Pool: Active=${data.poolStatus.totalCount}, Idle=${data.poolStatus.idleCount}`;
+            } catch (error) {
+                document.getElementById('connection-status').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        async function checkDatabase() {
+            try {
+                // Get all updates from the database
+                const res = await fetch('http://localhost:3001/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'getAllUpdates',
+                        docName: 'note:main' // This is the default note ID from the canvas
+                    })
+                });
+
+                const data = await res.json();
+                const statusEl = document.getElementById('db-status');
+                
+                if (data.updates && data.updates.length > 0) {
+                    statusEl.innerHTML = `<strong>Found ${data.updates.length} updates in PostgreSQL:</strong><br><br>`;
+                    
+                    data.updates.slice(-5).forEach((update, i) => {
+                        statusEl.innerHTML += 
+                            `Update ${data.updates.length - 4 + i}:<br>` +
+                            `  Time: ${new Date(update.timestamp).toLocaleString()}<br>` +
+                            `  Client: ${update.clientId}<br>` +
+                            `  Size: ${update.update.length} chars<br><br>`;
+                    });
+                } else {
+                    statusEl.textContent = 'No updates found for the main canvas note yet. Try editing the panel content!';
+                }
+
+                // Also check total database stats
+                const statsRes = await fetch('http://localhost:3001/api/persistence', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'getAllUpdates',
+                        docName: '__all__' // Special docName to get all
+                    })
+                }).catch(() => null);
+
+                if (statsRes) {
+                    statusEl.innerHTML += '<hr><strong>Database Summary:</strong><br>';
+                    statusEl.innerHTML += 'Total documents in PostgreSQL: Check with monitor-db.sh';
+                }
+
+            } catch (error) {
+                document.getElementById('db-status').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        function startMonitor() {
+            if (monitorInterval) return;
+            
+            monitorInterval = setInterval(() => {
+                checkDatabase();
+                checkConnection();
+            }, 2000);
+            
+            document.getElementById('db-status').innerHTML = '👁️ Monitoring started...';
+        }
+
+        function stopMonitor() {
+            if (monitorInterval) {
+                clearInterval(monitorInterval);
+                monitorInterval = null;
+            }
+        }
+
+        // Initial checks
+        checkConnection();
+        setTimeout(checkDatabase, 1000);
+
+        // Log to console
+        console.log(`
+PostgreSQL Persistence Test
+
+1. Edit content in the canvas above
+2. Watch the database monitor below
+3. Or run this command to see all database contents:
+
+docker exec annotation_postgres psql -U postgres -d annotation_system -c "SELECT id, doc_name, client_id, timestamp FROM yjs_updates ORDER BY timestamp DESC LIMIT 10;"
+        `);
+    </script>
+</body>
+</html>

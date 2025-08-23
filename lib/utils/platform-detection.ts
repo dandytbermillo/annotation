@@ -1,5 +1,8 @@
 export type Platform = 'web' | 'electron'
 
+/**
+ * Detect the current platform (web or electron)
+ */
 export function detectPlatform(): Platform {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
     return 'electron'
@@ -7,13 +10,40 @@ export function detectPlatform(): Platform {
   return 'web'
 }
 
+/**
+ * Check if code is running on server-side (Node.js)
+ * Returns true in Next.js SSR, API routes, or Node.js environments
+ */
+export function isServerSide(): boolean {
+  return typeof window === 'undefined'
+}
+
+/**
+ * Check if code is running at build time
+ * Useful for Next.js static generation and build-time optimizations
+ */
+export function isBuildTime(): boolean {
+  // Next.js sets NODE_ENV to 'production' during build
+  // and we can check for the absence of window
+  return typeof window === 'undefined' && 
+         process.env.NODE_ENV === 'production' &&
+         // Additional check for Next.js build phase
+         (process.env.NEXT_PHASE === 'phase-production-build' ||
+          process.env.NEXT_PHASE === 'phase-export')
+}
+
 export function getPlatformCapabilities() {
   const platform = detectPlatform()
   
-  // In the browser, check if we have PostgreSQL configured
-  const hasPostgreSQLConfig = typeof window !== 'undefined' 
-    ? !!(window as any).__POSTGRES_ENABLED__ || process.env.NEXT_PUBLIC_POSTGRES_ENABLED === 'true'
-    : !!process.env.POSTGRES_URL
+  // Check if PostgreSQL is available/configured
+  const hasPostgreSQLConfig = isServerSide()
+    ? !!process.env.POSTGRES_URL  // Server-side: direct connection available
+    : !!(
+        // Browser-side: check for API configuration
+        (window as any).__POSTGRES_ENABLED__ || 
+        process.env.NEXT_PUBLIC_POSTGRES_ENABLED === 'true' ||
+        process.env.NEXT_PUBLIC_POSTGRES_API // API endpoint configured
+      )
   
   return {
     platform,
@@ -32,12 +62,15 @@ export function getPlatformCapabilities() {
   }
 }
 
-export function getPreferredPersistence(): 'postgres' | 'indexeddb' | 'sqlite' {
+export function getPreferredPersistence(): 'postgres' | 'postgres-client' | 'indexeddb' | 'sqlite' {
   const capabilities = getPlatformCapabilities()
   
   // Priority order: PostgreSQL > Platform-specific default
   if (capabilities.hasPostgreSQL) {
-    return 'postgres'
+    // Use direct PostgreSQL on server or Electron, API client in browser
+    return isServerSide() || capabilities.platform === 'electron' 
+      ? 'postgres' 
+      : 'postgres-client'
   }
   
   if (capabilities.platform === 'electron' && capabilities.hasSQLite) {
@@ -45,4 +78,23 @@ export function getPreferredPersistence(): 'postgres' | 'indexeddb' | 'sqlite' {
   }
   
   return 'indexeddb'
+}
+
+/**
+ * Get the specific persistence adapter class based on platform and configuration
+ */
+export function getPersistenceAdapterType(): string {
+  const persistence = getPreferredPersistence()
+  
+  switch (persistence) {
+    case 'postgres':
+      return 'PostgresPersistenceAdapter'
+    case 'postgres-client':
+      return 'PostgresClientAdapter'
+    case 'sqlite':
+      return 'SQLiteAdapter'
+    case 'indexeddb':
+    default:
+      return 'EnhancedWebPersistenceAdapter'
+  }
 } 

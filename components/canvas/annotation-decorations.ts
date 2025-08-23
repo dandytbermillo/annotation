@@ -1,6 +1,6 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { CollaborationProvider } from '@/lib/yjs-provider'
+import { UnifiedProvider } from '@/lib/provider-switcher'
 import { trackTooltipShown } from './performance-decorations'
 
 export const annotationDecorationsKey = new PluginKey('annotationDecorations')
@@ -148,7 +148,7 @@ function showAnnotationTooltip(element: HTMLElement, branchId: string, type: str
   }
   
   // Get branch data
-  const provider = CollaborationProvider.getInstance()
+  const provider = UnifiedProvider.getInstance()
   const branchesMap = provider.getBranchesMap()
   const branchData = branchesMap.get(branchId)
   
