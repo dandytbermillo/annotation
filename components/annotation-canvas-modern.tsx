@@ -6,7 +6,7 @@ import { CanvasPanel } from "./canvas/canvas-panel"
 import { AnnotationToolbar } from "./canvas/annotation-toolbar"
 import { UnifiedProvider } from "@/lib/provider-switcher"
 import { CanvasControls } from "./canvas/canvas-controls"
-import { Minimap } from "./canvas/minimap"
+// import { Minimap } from "./canvas/minimap" // Disabled - not needed
 import { ConnectionLines } from "./canvas/connection-lines"
 import { PersistenceFallbackDialog } from "./persistence-fallback-dialog"
 import { ConnectionStatus } from "./connection-status"
@@ -373,12 +373,13 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
           />
         )}
 
-        {/* Minimap */}
+        {/* Minimap - Disabled, not needed
         <Minimap 
           panels={panels}
           canvasState={canvasState}
           onNavigate={(x, y) => setCanvasState(prev => ({ ...prev, translateX: x, translateY: y }))}
         />
+        */}
 
         {/* Canvas Container */}
         <div 

@@ -107,11 +107,14 @@ const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
     // Create or use existing YDoc for this editor
     const doc = ydoc || new Y.Doc()
     
+    console.log('[TiptapEditor] Panel:', panelId, 'YDoc provided:', !!ydoc, 'Doc:', doc)
+    
     // Persistence is now handled by the unified provider at a higher level
     // to avoid conflicts between different persistence mechanisms
     useEffect(() => {
       // Removed local IndexeddbPersistence to prevent conflicts
       // The UnifiedProvider handles all persistence centrally
+      console.log('[TiptapEditor] YDoc updated for panel:', panelId, 'YDoc:', ydoc)
     }, [doc, panelId, provider, ydoc])
 
     const editor = useEditor({

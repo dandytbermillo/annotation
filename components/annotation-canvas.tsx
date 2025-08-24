@@ -2049,11 +2049,13 @@ Filter branches:
         </div>
       </div>
 
+      {/* Minimap disabled - not needed for current implementation
       <div className="minimap">
         <div className="minimap-content" id="minimap-content">
           <div className="minimap-viewport" id="minimap-viewport"></div>
         </div>
       </div>
+      */}
 
       <div className="canvas-container" id="canvas-container">
         <div className="infinite-canvas" id="infinite-canvas">

@@ -198,7 +198,12 @@ export class CollaborationProvider {
   private currentNoteId: string | null = null
   private collaborationEnabled: boolean = false
 
-  private constructor() {}
+  private constructor() {
+    // Store reference for metrics access
+    if (typeof window !== 'undefined') {
+      (window as any).yjsProvider = this
+    }
+  }
 
   public static getInstance(): CollaborationProvider {
     if (!CollaborationProvider.instance) {
@@ -425,5 +430,26 @@ export class CollaborationProvider {
     editorDocs.clear()
     
     this.currentNoteId = null
+  }
+
+  /**
+   * Get batching metrics if available
+   */
+  public getBatchingMetrics(): any {
+    // Standard provider doesn't have batching yet
+    // Return mock metrics for demo purposes
+    return {
+      totalUpdates: 0,
+      totalBatches: 0,
+      averageBatchSize: 0,
+      compressionRatio: 1,
+      flushReasons: {
+        timeout: 0,
+        size: 0,
+        count: 0,
+        manual: 0,
+        shutdown: 0
+      }
+    }
   }
 } 

@@ -34,8 +34,10 @@ export function ConnectionStatus() {
       return <Database className="h-3 w-3 text-green-400" />
     } else if (providerType === 'postgres' && !isHealthy) {
       return <AlertCircle className="h-3 w-3 text-orange-400" />
+    } else if (providerType === 'enhanced') {
+      return <Database className="h-3 w-3 text-blue-400" />
     } else {
-      return <HardDrive className="h-3 w-3 text-blue-400" />
+      return <HardDrive className="h-3 w-3 text-gray-400" />
     }
   }
   
@@ -45,7 +47,7 @@ export function ConnectionStatus() {
     } else if (providerType === 'postgres' && !isHealthy) {
       return 'Connection Error'
     } else if (providerType === 'enhanced') {
-      return 'Enhanced Local'
+      return 'Enhanced + PostgreSQL'
     } else {
       return 'Local Storage'
     }

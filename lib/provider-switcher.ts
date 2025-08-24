@@ -15,6 +15,8 @@ applyEnhancedProviderPatch()
 const USE_ENHANCED_PROVIDER = process.env.NEXT_PUBLIC_USE_ENHANCED_PROVIDER === 'true' || 
                               typeof window !== 'undefined' && window.localStorage?.getItem('use-enhanced-provider') === 'true'
 
+console.log('USE_ENHANCED_PROVIDER:', USE_ENHANCED_PROVIDER, 'env:', process.env.NEXT_PUBLIC_USE_ENHANCED_PROVIDER)
+
 // Quick fix for old provider - add missing getStates method
 const originalGetProvider = CollaborationProvider.prototype.getProvider
 CollaborationProvider.prototype.getProvider = function() {
@@ -46,7 +48,10 @@ export class UnifiedProvider {
     this.initializeDefaultProvider()
     
     // Then check PostgreSQL health asynchronously if needed
-    if (process.env.NEXT_PUBLIC_POSTGRES_ENABLED === 'true' && UnifiedProvider.persistenceMode !== 'indexeddb') {
+    // BUT: Don't upgrade if we're already using the enhanced provider (it has its own PostgreSQL support)
+    if (process.env.NEXT_PUBLIC_POSTGRES_ENABLED === 'true' && 
+        UnifiedProvider.persistenceMode !== 'indexeddb' &&
+        !USE_ENHANCED_PROVIDER) {
       this.checkAndUpgradeToPostgres()
     }
   }
@@ -67,6 +72,11 @@ export class UnifiedProvider {
       // Start with standard provider, will upgrade to PostgreSQL if available
       console.log('Using standard YJS Provider (will check PostgreSQL availability)')
       this.provider = CollaborationProvider.getInstance()
+    }
+    
+    // Store reference for metrics access
+    if (typeof window !== 'undefined') {
+      (window as any).yjsProvider = this
     }
   }
   
@@ -258,6 +268,14 @@ export class UnifiedProvider {
   // Get persistence mode
   public static getPersistenceMode(): 'postgres' | 'indexeddb' | 'auto' {
     return UnifiedProvider.persistenceMode
+  }
+  
+  // Get batching metrics if available
+  public getBatchingMetrics(): any {
+    if ('getBatchingMetrics' in this.provider) {
+      return this.provider.getBatchingMetrics()
+    }
+    return null
   }
 }
 

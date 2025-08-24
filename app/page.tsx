@@ -1,6 +1,7 @@
 "use client"
 
 import dynamic from 'next/dynamic'
+import { BatchingMonitor } from '@/components/batching-monitor'
 
 const AnnotationApp = dynamic(
   () => import('@/components/annotation-app').then(mod => ({ default: mod.AnnotationApp })),
@@ -15,5 +16,10 @@ const AnnotationApp = dynamic(
 )
 
 export default function Page() {
-  return <AnnotationApp />
+  return (
+    <>
+      <AnnotationApp />
+      <BatchingMonitor />
+    </>
+  )
 }

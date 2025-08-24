@@ -9,6 +9,8 @@ import { getPreferredPersistence } from './utils/platform-detection'
 import { EnhancedWebPersistenceAdapter } from './adapters/web-adapter-enhanced'
 import { ElectronPersistenceAdapter } from './adapters/electron-adapter'
 import { PostgresAPIAdapter } from './adapters/postgres-api-adapter'
+import { BatchingPersistenceProvider } from './persistence/batching-provider'
+import { getDefaultConfig, BatchMetrics } from './persistence/batching-config'
 
 export interface PersistenceProvider {
   persist(docName: string, update: Uint8Array): Promise<void>
@@ -277,29 +279,40 @@ export class EnhancedCollaborationProvider {
     // Select persistence adapter based on available features
     const preferredPersistence = getPreferredPersistence()
     
+    let baseAdapter: PersistenceProvider
+    
     switch (preferredPersistence) {
       case 'postgres':
         // For now, always use API adapter in browser context
         // Direct PostgreSQL connection would only work in Electron
         console.log('Using PostgreSQL via API routes (browser-safe)')
-        this.persistence = new PostgresAPIAdapter()
+        baseAdapter = new PostgresAPIAdapter()
         break
       case 'postgres-client':
         // PostgreSQL via API routes (browser)
         console.log('Using PostgreSQL via API routes')
-        this.persistence = new PostgresAPIAdapter()
+        baseAdapter = new PostgresAPIAdapter()
         break
       case 'sqlite':
         // SQLite is handled by ElectronPersistenceAdapter
-        this.persistence = new ElectronPersistenceAdapter('annotation-system')
+        baseAdapter = new ElectronPersistenceAdapter('annotation-system')
         break
       case 'indexeddb':
       default:
-        this.persistence = new EnhancedWebPersistenceAdapter('annotation-system')
+        baseAdapter = new EnhancedWebPersistenceAdapter('annotation-system')
         break
     }
     
-    console.log(`Using ${preferredPersistence} persistence adapter`)
+    // Wrap with batching provider for performance optimization
+    const batchingConfig = getDefaultConfig()
+    this.persistence = new BatchingPersistenceProvider(baseAdapter, batchingConfig)
+    
+    console.log(`Using ${preferredPersistence} persistence adapter with batching enabled`)
+    
+    // Store reference for metrics access
+    if (typeof window !== 'undefined') {
+      (window as any).yjsProvider = this
+    }
     
     this.structure = new EnhancedCollaborativeStructure(this.mainDoc, this.persistence)
     this.syncManager = new HybridSyncManager(this.mainDoc, 'default-room')
@@ -328,6 +341,18 @@ export class EnhancedCollaborationProvider {
   }
 
   private setupEventHandlers(): void {
+    // Set up persistence for main document
+    this.mainDoc.on('update', async (update: Uint8Array, origin: any) => {
+      // Skip updates from loading
+      if (origin === 'load') return
+      
+      try {
+        await this.persistence.persist('main-doc', update)
+      } catch (error) {
+        console.error('Failed to persist main document:', error)
+      }
+    })
+    
     // Listen for performance warnings
     if (typeof window !== 'undefined') {
       window.addEventListener('performance-warning', (event: CustomEvent) => {
@@ -482,6 +507,17 @@ export class EnhancedCollaborationProvider {
   public async initializeNote(noteId: string, noteData: any): Promise<void> {
     this.currentNoteId = noteId
     
+    // Load existing data from persistence
+    try {
+      const updates = await this.persistence.getAllUpdates('main-doc')
+      updates.forEach(update => {
+        Y.applyUpdate(this.mainDoc, update, 'load')
+      })
+      console.log(`Loaded ${updates.length} updates from persistence for main-doc`)
+    } catch (error) {
+      console.error('Failed to load main document from persistence:', error)
+    }
+    
     // Initialize panels
     const metadata = this.mainDoc.getMap('metadata')
     const panels = metadata.get('panels') as Y.Map<any>
@@ -555,13 +591,28 @@ export class EnhancedCollaborationProvider {
     await this.persistence.compact('main-doc')
   }
 
-  public destroy(): void {
+  /**
+   * Get batching metrics if batching is enabled
+   */
+  public getBatchingMetrics(): BatchMetrics | null {
+    if (this.persistence instanceof BatchingPersistenceProvider) {
+      return this.persistence.getMetrics()
+    }
+    return null
+  }
+
+  public async destroy(): Promise<void> {
     this.performanceMonitor.destroy()
     this.syncManager.disconnect()
     
     // Save final state
     const snapshot = Y.encodeStateAsUpdate(this.mainDoc)
-    this.persistence.saveSnapshot('main-doc', snapshot)
+    await this.persistence.saveSnapshot('main-doc', snapshot)
+    
+    // Shutdown batching provider if applicable
+    if (this.persistence instanceof BatchingPersistenceProvider) {
+      await this.persistence.shutdown()
+    }
     
     // Cleanup
     this.mainDoc.destroy()

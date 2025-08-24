@@ -1,12 +1,14 @@
 "use client"
 
 import { useRef, useState, useEffect, useReducer } from "react"
+import * as Y from 'yjs'
 import { useCanvas } from "./canvas-context"
 import type { Branch } from "@/types/canvas"
 import TiptapEditor, { TiptapEditorHandle } from "./tiptap-editor"
 import { EditorToolbar } from "./editor-toolbar"
 import { UnifiedProvider } from "@/lib/provider-switcher"
 import { getEditorYDoc } from "@/lib/yjs-provider"
+import { EnhancedCollaborationProvider } from "@/lib/enhanced-yjs-provider"
 
 interface CanvasPanelProps {
   panelId: string
@@ -40,7 +42,35 @@ export function CanvasPanel({ panelId, branch, position, onClose, noteId }: Canv
 
   // Get collaboration provider and YJS document for this editor
   const provider = UnifiedProvider.getInstance()
-  const ydoc = getEditorYDoc(panelId)
+  // Get the YDoc from the appropriate provider
+  const [ydoc, setYdoc] = useState<Y.Doc | null>(null)
+  
+  useEffect(() => {
+    async function loadYDoc() {
+      // Check if we're using the enhanced provider
+      const unifiedProvider = provider as any
+      console.log('[CanvasPanel] Provider check:', {
+        hasProvider: !!unifiedProvider?.provider,
+        providerType: unifiedProvider?.provider?.constructor?.name,
+        hasGetEditorSubdoc: unifiedProvider?.provider && 'getEditorSubdoc' in unifiedProvider.provider,
+        hasStructure: unifiedProvider?.provider && 'structure' in unifiedProvider.provider
+      })
+      
+      if (unifiedProvider?.provider && 'structure' in unifiedProvider.provider && unifiedProvider.provider.structure) {
+        // Using enhanced provider - get subdoc with persistence
+        console.log('[CanvasPanel] Using enhanced provider for panel:', panelId)
+        const subdoc = await unifiedProvider.provider.structure.getEditorSubdoc(panelId)
+        console.log('[CanvasPanel] Got subdoc:', subdoc)
+        setYdoc(subdoc)
+      } else {
+        // Fallback to standard provider
+        console.log('[CanvasPanel] Using standard provider for panel:', panelId)
+        setYdoc(getEditorYDoc(panelId))
+      }
+    }
+    
+    loadYDoc()
+  }, [panelId, provider])
   
   // Set the current note context if provided
   useEffect(() => {
