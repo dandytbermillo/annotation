@@ -1,10 +1,27 @@
 export type Platform = 'web' | 'electron'
 
 /**
+ * Check if running in Electron
+ */
+export function isElectron(): boolean {
+  // Check multiple indicators for Electron environment
+  if (typeof process !== 'undefined' && process.versions && process.versions.electron) {
+    return true
+  }
+  if (typeof window !== 'undefined' && (window as any).electronAPI) {
+    return true
+  }
+  if (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron')) {
+    return true
+  }
+  return false
+}
+
+/**
  * Detect the current platform (web or electron)
  */
 export function detectPlatform(): Platform {
-  if (typeof window !== 'undefined' && (window as any).electronAPI) {
+  if (isElectron()) {
     return 'electron'
   }
   return 'web'
@@ -65,16 +82,33 @@ export function getPlatformCapabilities() {
 export function getPreferredPersistence(): 'postgres' | 'postgres-client' | 'indexeddb' | 'sqlite' {
   const capabilities = getPlatformCapabilities()
   
-  // Priority order: PostgreSQL > Platform-specific default
-  if (capabilities.hasPostgreSQL) {
-    // Use direct PostgreSQL on server or Electron, API client in browser
-    return isServerSide() || capabilities.platform === 'electron' 
-      ? 'postgres' 
-      : 'postgres-client'
+  // Electron-specific logic
+  if (isElectron()) {
+    // Check Electron-specific environment variable
+    const electronDbType = process.env.ELECTRON_DB_TYPE
+    if (electronDbType === 'postgres' && capabilities.hasPostgreSQL) {
+      return 'postgres'
+    }
+    if (electronDbType === 'sqlite' || capabilities.hasSQLite) {
+      return 'sqlite'
+    }
+    // Default to PostgreSQL if available
+    if (capabilities.hasPostgreSQL) {
+      return 'postgres'
+    }
   }
   
-  if (capabilities.platform === 'electron' && capabilities.hasSQLite) {
-    return 'sqlite'
+  // Web/Browser logic
+  if (typeof window !== 'undefined') {
+    if (process.env.NEXT_PUBLIC_POSTGRES_ENABLED === 'true') {
+      return 'postgres-client'
+    }
+    return 'indexeddb'
+  }
+  
+  // Server-side logic
+  if (isServerSide() && capabilities.hasPostgreSQL) {
+    return 'postgres'
   }
   
   return 'indexeddb'

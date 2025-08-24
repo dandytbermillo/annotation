@@ -6,7 +6,7 @@ import { CanvasPanel } from "./canvas/canvas-panel"
 import { AnnotationToolbar } from "./canvas/annotation-toolbar"
 import { UnifiedProvider } from "@/lib/provider-switcher"
 import { CanvasControls } from "./canvas/canvas-controls"
-import { Minimap } from "./canvas/minimap"
+// import { Minimap } from "./canvas/minimap" // Disabled - not needed
 import { ConnectionLines } from "./canvas/connection-lines"
 import { PersistenceFallbackDialog } from "./persistence-fallback-dialog"
 import { ConnectionStatus } from "./connection-status"
@@ -65,24 +65,53 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
     // Initialize collaboration provider with YJS persistence
     const provider = UnifiedProvider.getInstance()
     
-    // Define default data for new notes
-    const defaultData = {
-      'main': {
-        title: 'New Document',
-        type: 'main',
-        content: `<p>Start writing your document here...</p>`,
-        branches: [],
-        position: { x: 2000, y: 1500 },
-        isEditable: true
+    // First, try to load existing note data from localStorage
+    const savedNoteData = localStorage.getItem(`note-data-${noteId}`)
+    let noteData: Record<string, any>
+    
+    if (savedNoteData) {
+      try {
+        // Parse the saved note data
+        noteData = JSON.parse(savedNoteData)
+        console.log(`Loading existing note data for: ${noteId}`)
+      } catch (error) {
+        console.error('Failed to parse saved note data:', error)
+        // Fall back to default data
+        noteData = {
+          'main': {
+            title: 'New Document',
+            type: 'main',
+            content: `<p>Start writing your document here...</p>`,
+            branches: [],
+            position: { x: 2000, y: 1500 },
+            isEditable: true
+          }
+        }
+      }
+    } else {
+      // No saved data, use default for new notes
+      noteData = {
+        'main': {
+          title: 'New Document',
+          type: 'main',
+          content: `<p>Start writing your document here...</p>`,
+          branches: [],
+          position: { x: 2000, y: 1500 },
+          isEditable: true
+        }
       }
     }
 
     // Initialize the note with YJS persistence providers
     // This will either restore from persistence or create with defaults
-    provider.initializeDefaultData(noteId, defaultData)
+    provider.initializeDefaultData(noteId, noteData)
     
-    // Set main panel as the initial panel
-    setPanels(['main'])
+    // Set initial panels based on the note data
+    const initialPanels = Object.keys(noteData).filter(key => {
+      // Only include main panel initially, other panels will be opened on demand
+      return key === 'main'
+    })
+    setPanels(initialPanels)
 
     return () => {
       // YJS persistence providers handle saving automatically
@@ -240,17 +269,40 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
     setShowFallbackDialog(false)
     
     // Re-initialize the current note with the new provider
-    const defaultData = {
-      'main': {
-        title: 'New Document',
-        type: 'main',
-        content: `<p>Start writing your document here...</p>`,
-        branches: [],
-        position: { x: 2000, y: 1500 },
-        isEditable: true
+    // Load existing note data from localStorage
+    const savedNoteData = localStorage.getItem(`note-data-${noteId}`)
+    let noteData: Record<string, any>
+    
+    if (savedNoteData) {
+      try {
+        noteData = JSON.parse(savedNoteData)
+      } catch (error) {
+        console.error('Failed to parse saved note data:', error)
+        noteData = {
+          'main': {
+            title: 'New Document',
+            type: 'main',
+            content: `<p>Start writing your document here...</p>`,
+            branches: [],
+            position: { x: 2000, y: 1500 },
+            isEditable: true
+          }
+        }
+      }
+    } else {
+      noteData = {
+        'main': {
+          title: 'New Document',
+          type: 'main',
+          content: `<p>Start writing your document here...</p>`,
+          branches: [],
+          position: { x: 2000, y: 1500 },
+          isEditable: true
+        }
       }
     }
-    provider.initializeDefaultData(noteId, defaultData)
+    
+    provider.initializeDefaultData(noteId, noteData)
   }
 
   const handleRetry = async () => {
@@ -261,17 +313,40 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
     if (success) {
       setShowFallbackDialog(false)
       // Re-initialize with PostgreSQL provider
-      const defaultData = {
-        'main': {
-          title: 'New Document',
-          type: 'main',
-          content: `<p>Start writing your document here...</p>`,
-          branches: [],
-          position: { x: 2000, y: 1500 },
-          isEditable: true
+      // Load existing note data from localStorage
+      const savedNoteData = localStorage.getItem(`note-data-${noteId}`)
+      let noteData: Record<string, any>
+      
+      if (savedNoteData) {
+        try {
+          noteData = JSON.parse(savedNoteData)
+        } catch (error) {
+          console.error('Failed to parse saved note data:', error)
+          noteData = {
+            'main': {
+              title: 'New Document',
+              type: 'main',
+              content: `<p>Start writing your document here...</p>`,
+              branches: [],
+              position: { x: 2000, y: 1500 },
+              isEditable: true
+            }
+          }
+        }
+      } else {
+        noteData = {
+          'main': {
+            title: 'New Document',
+            type: 'main',
+            content: `<p>Start writing your document here...</p>`,
+            branches: [],
+            position: { x: 2000, y: 1500 },
+            isEditable: true
+          }
         }
       }
-      provider.initializeDefaultData(noteId, defaultData)
+      
+      provider.initializeDefaultData(noteId, noteData)
     }
     
     setIsRetrying(false)
@@ -298,12 +373,13 @@ const ModernAnnotationCanvas = forwardRef<CanvasImperativeHandle, ModernAnnotati
           />
         )}
 
-        {/* Minimap */}
+        {/* Minimap - Disabled, not needed
         <Minimap 
           panels={panels}
           canvasState={canvasState}
           onNavigate={(x, y) => setCanvasState(prev => ({ ...prev, translateX: x, translateY: y }))}
         />
+        */}
 
         {/* Canvas Container */}
         <div 
